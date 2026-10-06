@@ -1,5 +1,6 @@
 import { Env, StrategicWeights } from "./types";
 import { ArtifactsService } from "./artifacts";
+import { SwarmDispatcher } from "./dispatcher";
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -103,6 +104,44 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
     return json({ intents: rows.results || [] });
   }
 
+  // Seed Catalog into D1
+  if (url.pathname === "/api/seed" && request.method === "POST") {
+    try {
+      const dispatcher = new SwarmDispatcher(env);
+      const count = await dispatcher.seedCatalog();
+      return json({ success: true, count, message: `Seeded ${count} Intent Packages` });
+    } catch (err: any) {
+      return json({ error: err.message }, 500);
+    }
+  }
+
+  // Dispatch Swarm (Forks Artifacts repos for pending intents)
+  if (url.pathname === "/api/swarm/dispatch" && request.method === "POST") {
+    try {
+      const dispatcher = new SwarmDispatcher(env);
+      const body = await request.json().catch(() => ({})) as { intentId?: string };
+      if (body.intentId) {
+        const res = await dispatcher.dispatchIntent(body.intentId);
+        return json(res);
+      }
+      const res = await dispatcher.dispatchSwarm();
+      return json(res);
+    } catch (err: any) {
+      return json({ error: err.message }, 500);
+    }
+  }
+
+  // Fast-Forward to Evaluated Swarm (Demo State 1)
+  if (url.pathname === "/api/swarm/fast-forward" && request.method === "POST") {
+    try {
+      const dispatcher = new SwarmDispatcher(env);
+      const res = await dispatcher.fastForwardEvaluated();
+      return json({ success: true, count: res.count, message: "Swarm fast-forwarded to evaluated state" });
+    } catch (err: any) {
+      return json({ error: err.message }, 500);
+    }
+  }
+
   // List Artifacts repositories
   if (url.pathname === "/api/repos" && request.method === "GET") {
     try {
@@ -124,14 +163,13 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
         "UPDATE strategic_weights SET growth_weight = 0.50, cost_weight = 0.25, risk_weight = 0.25, updated_at = CURRENT_TIMESTAMP WHERE id = 1"
       ).run();
 
-      // 3. Reset all intents back to pending or initial seeded state
-      await env.DB.prepare(
-        "UPDATE intents SET status = 'pending', composite_score = 0 WHERE status != 'pending'"
-      ).run();
+      // 3. Re-seed all intents back to pristine pending state
+      const dispatcher = new SwarmDispatcher(env);
+      await dispatcher.seedCatalog();
 
       return json({
         success: true,
-        message: "Demo state reset successfully",
+        message: "Demo state reset and re-seeded successfully",
         prunedForks: pruned,
         defaultWeights: { growth: 0.5, cost: 0.25, risk: 0.25 },
       });

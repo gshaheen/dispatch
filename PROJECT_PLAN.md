@@ -152,13 +152,15 @@ To guarantee flawless demo rehearsals, video takes, and live presentations:
 - [x] Deploy live to Cloudflare Workers (`https://dispatch.gshaheen.workers.dev`) and verify health check.
 - [x] Add official MIT `LICENSE` file.
 
-### Phase 2: Intent Catalog & Swarm Dispatcher
-- [ ] Design D1 database schema for Intent Packages, strategic weights, and evaluation metrics.
-- [ ] Seed catalog with 12–15 realistic Intent Packages spanning:
-  * Enterprise Growth (SAML SSO, Stripe Multi-Currency, Audit Logs).
-  * Infrastructure & Cost Efficiency (Edge KV Caching, DB Query Batching, Asset Minification).
+### Phase 2: Intent Catalog & Swarm Dispatcher (COMPLETED)
+- [x] Design D1 database schema for Intent Packages, strategic weights, and evaluation metrics (`schema.sql`).
+- [x] Seed catalog with 10 realistic Intent Packages spanning:
+  * Enterprise Growth (SAML SSO, Stripe Multi-Currency, Audit Logs, CSV Export).
+  * Infrastructure & Cost Efficiency (Edge KV Caching, DB Query Batching, Payload Compression).
   * Risk & Security (JWT CVE Patch, Rate Limiting, Input Sanitization).
-- [ ] Build the Swarm Dispatcher to create real Artifacts forks and push corresponding changes.
+- [x] Build the Swarm Dispatcher (`src/dispatcher.ts`) to programmatically fork real Cloudflare Artifacts repositories.
+- [x] Implement demo fast-forward (`/api/swarm/fast-forward`) and 1-click clean reset (`/api/demo/reset`) that prunes Artifacts forks.
+- [x] Deploy and verify dynamic real-time re-ranking across Growth, Cost, and Risk strategic postures.
 
 ### Phase 3: Strategic Evaluation Engine
 - [ ] Set up the evaluation pipeline triggered on fork pushes.

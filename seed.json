@@ -1,0 +1,202 @@
+[
+  {
+    "id": "intent-growth-sso",
+    "title": "Enterprise SAML / Okta SSO Integration",
+    "description": "Implement SAML 2.0 and Okta OpenID Connect authentication to satisfy enterprise compliance requirements.",
+    "sourceType": "crm",
+    "sourceRef": "Salesforce Opp #8492",
+    "sourceMetadata": {
+      "arrImpact": 280000,
+      "customer": "Acme Global (Renewal Contingency)",
+      "tier": "enterprise"
+    },
+    "forkRepoName": "task-growth-sso",
+    "status": "pending",
+    "growthScore": 92,
+    "costScore": -5,
+    "riskScore": 10,
+    "executiveSummary": "Unblocks $280k ARR renewal for Acme Global by fulfilling enterprise security requirements. Introduces standard SAML auth flow.",
+    "files": {
+      "src/routes/sso.ts": "export async function handleSamlAuth(req: Request) {\n  const samlToken = req.headers.get('x-saml-token');\n  if (!samlToken) return new Response('Missing SAML assertion', { status: 401 });\n  return new Response(JSON.stringify({ authenticated: true, provider: 'okta', tenant: 'acme-global' }), {\n    headers: { 'content-type': 'application/json' }\n  });\n}\n",
+      "src/middleware/auth.ts": "export function authenticate(req: Request) {\n  const token = req.headers.get('authorization');\n  const saml = req.headers.get('x-saml-token');\n  if (saml) return { userId: 'sso-user', role: 'enterprise_admin', provider: 'okta' };\n  if (!token) throw new Error('Missing auth token');\n  return { userId: 'user-1', role: 'standard' };\n}\n"
+    }
+  },
+  {
+    "id": "intent-cost-cache",
+    "title": "Edge Cache API Layer for Product Catalogs",
+    "description": "Integrate Cloudflare Cache API (caches.default) to cache high-traffic public catalog queries at the edge.",
+    "sourceType": "telemetry",
+    "sourceRef": "Cloudflare Observatory Alert #301",
+    "sourceMetadata": {
+      "latencyImpactMs": -145,
+      "errorRateReduction": 0.40
+    },
+    "forkRepoName": "task-cost-cache",
+    "status": "pending",
+    "growthScore": 15,
+    "costScore": 88,
+    "riskScore": 25,
+    "executiveSummary": "Reduces Worker CPU time by 65% and drops P95 latency by 145ms by serving cached responses directly from Cloudflare edge caches.",
+    "files": {
+      "src/middleware/cache.ts": "export async function getOrSetCache(request: Request, handler: () => Promise<Response>): Promise<Response> {\n  const cache = caches.default;\n  const cacheKey = new Request(request.url, request);\n  let response = await cache.match(cacheKey);\n  if (!response) {\n    response = await handler();\n    response.headers.set('Cache-Control', 'public, max-age=300');\n    await cache.put(cacheKey, response.clone());\n  }\n  return response;\n}\n"
+    }
+  },
+  {
+    "id": "intent-risk-cve",
+    "title": "Patch CVE-2026-8812 (Algorithm Confusion in Token Parser)",
+    "description": "Enforce strict algorithm pinning (RS256 only) in JWT token verification to prevent HMAC algorithm confusion attacks.",
+    "sourceType": "security",
+    "sourceRef": "Cloudflare Security Center Alert SEC-8812",
+    "sourceMetadata": {
+      "cveId": "CVE-2026-8812",
+      "cveSeverity": "CRITICAL 9.8"
+    },
+    "forkRepoName": "task-risk-cve",
+    "status": "pending",
+    "growthScore": -5,
+    "costScore": 0,
+    "riskScore": 96,
+    "executiveSummary": "Eliminates critical remote authentication bypass vulnerability (CVE-2026-8812). Pins crypto algorithms to RS256.",
+    "files": {
+      "src/middleware/auth.ts": "export function authenticate(req: Request) {\n  const token = req.headers.get('authorization');\n  if (!token) throw new Error('Missing auth token');\n  // Security Patch CVE-2026-8812: Strict algorithm header check\n  const parts = token.split('.');\n  if (parts.length !== 3) throw new Error('Malformed token format');\n  try {\n    const header = JSON.parse(atob(parts[0]));\n    if (header.alg !== 'RS256') throw new Error('Forbidden token algorithm');\n  } catch {\n    throw new Error('Invalid token security signature');\n  }\n  return { userId: 'user-1', role: 'standard' };\n}\n"
+    }
+  },
+  {
+    "id": "intent-growth-stripe",
+    "title": "Stripe Multi-Currency Billing (EUR & GBP Support)",
+    "description": "Support multi-currency subscription checkouts in EUR and GBP to unlock European enterprise sales pipeline.",
+    "sourceType": "crm",
+    "sourceRef": "Linear ENG-402 / Sales RFE",
+    "sourceMetadata": {
+      "arrImpact": 190000,
+      "tier": "enterprise"
+    },
+    "forkRepoName": "task-growth-stripe",
+    "status": "pending",
+    "growthScore": 85,
+    "costScore": -10,
+    "riskScore": 15,
+    "executiveSummary": "Expands billing pipeline across EMEA, unlocking an estimated $190k in new annual recurring revenue.",
+    "files": {
+      "src/routes/billing.ts": "export async function createCheckout(currency: 'usd' | 'eur' | 'gbp', planId: string) {\n  const rates: Record<string, number> = { usd: 1.0, eur: 0.92, gbp: 0.79 };\n  const multiplier = rates[currency] || 1.0;\n  return { checkoutUrl: `https://checkout.stripe.com/pay/${planId}?cur=${currency}`, rate: multiplier };\n}\n"
+    }
+  },
+  {
+    "id": "intent-cost-db-batch",
+    "title": "D1 Database Query Batching & Prepared Statements",
+    "description": "Combine sequential D1 SQL operations into batched db.batch() calls to eliminate roundtrip latency and query charges.",
+    "sourceType": "telemetry",
+    "sourceRef": "Datadog APM Trace #918",
+    "sourceMetadata": {
+      "latencyImpactMs": -85,
+      "errorRateReduction": 0.20
+    },
+    "forkRepoName": "task-cost-db-batch",
+    "status": "pending",
+    "growthScore": 5,
+    "costScore": 79,
+    "riskScore": 30,
+    "executiveSummary": "Reduces D1 database roundtrips from 4 calls to 1 batched execution per request, lowering D1 operation costs by 45%.",
+    "files": {
+      "src/db/queries.ts": "export async function batchTenantLookup(db: any, tenantId: string) {\n  return await db.batch([\n    db.prepare('SELECT * FROM tenants WHERE id = ?').bind(tenantId),\n    db.prepare('SELECT * FROM settings WHERE tenant_id = ?').bind(tenantId),\n    db.prepare('SELECT * FROM permissions WHERE tenant_id = ?').bind(tenantId)\n  ]);\n}\n"
+    }
+  },
+  {
+    "id": "intent-risk-ratelimit",
+    "title": "Distributed Rate Limiting on Auth Endpoints",
+    "description": "Add Cloudflare Workers Rate Limiting binding to /api/auth to mitigate credential stuffing and brute-force attacks.",
+    "sourceType": "security",
+    "sourceRef": "Cloudflare WAF Event #772",
+    "sourceMetadata": {
+      "cveSeverity": "HIGH"
+    },
+    "forkRepoName": "task-risk-ratelimit",
+    "status": "pending",
+    "growthScore": -5,
+    "costScore": 10,
+    "riskScore": 84,
+    "executiveSummary": "Prevents brute force attacks by capping authentication attempts to 5 per minute per IP using Cloudflare Rate Limiting.",
+    "files": {
+      "src/middleware/ratelimit.ts": "export async function checkRateLimit(ip: string): Promise<boolean> {\n  // Sliding window rate limiter for authentication protection\n  return true;\n}\n"
+    }
+  },
+  {
+    "id": "intent-growth-audit",
+    "title": "SOC2 Real-time Audit Logging Stream",
+    "description": "Stream audit log events for all administrative and user data actions to Cloudflare K2 for SOC2 compliance.",
+    "sourceType": "crm",
+    "sourceRef": "Salesforce Opp #9012",
+    "sourceMetadata": {
+      "arrImpact": 350000,
+      "customer": "Vanguard Capital",
+      "tier": "enterprise"
+    },
+    "forkRepoName": "task-growth-audit",
+    "status": "pending",
+    "growthScore": 89,
+    "costScore": -15,
+    "riskScore": 40,
+    "executiveSummary": "Mandatory compliance feature required to sign Vanguard Capital ($350k ARR deal). Emits immutable audit trails.",
+    "files": {
+      "src/services/audit.ts": "export async function logAuditEvent(actor: string, action: string, resource: string) {\n  const payload = { timestamp: new Date().toISOString(), actor, action, resource };\n  console.log('AUDIT_LOG:', JSON.stringify(payload));\n  return payload;\n}\n"
+    }
+  },
+  {
+    "id": "intent-cost-compression",
+    "title": "Zstandard & Brotli Payload Compression",
+    "description": "Compress large JSON responses dynamically at the edge to reduce egress bandwidth and speed up mobile clients.",
+    "sourceType": "roadmap",
+    "sourceRef": "Linear ENG-330",
+    "sourceMetadata": {
+      "latencyImpactMs": -60
+    },
+    "forkRepoName": "task-cost-compression",
+    "status": "pending",
+    "growthScore": 10,
+    "costScore": 72,
+    "riskScore": 20,
+    "executiveSummary": "Saves 35% on global egress bandwidth and accelerates response delivery for mobile and high-latency clients.",
+    "files": {
+      "src/middleware/compress.ts": "export function shouldCompress(headers: Headers): boolean {\n  const accept = headers.get('accept-encoding') || '';\n  return accept.includes('zstd') || accept.includes('br');\n}\n"
+    }
+  },
+  {
+    "id": "intent-risk-sanitize",
+    "title": "Runtime Input Validation & SQL Injection Armor",
+    "description": "Enforce strict schema validation and parameter binding on all tenant-facing API endpoints.",
+    "sourceType": "security",
+    "sourceRef": "Bugcrowd Report #209",
+    "sourceMetadata": {
+      "cveSeverity": "HIGH"
+    },
+    "forkRepoName": "task-risk-sanitize",
+    "status": "pending",
+    "growthScore": 0,
+    "costScore": -5,
+    "riskScore": 91,
+    "executiveSummary": "Closes security vulnerability in search filters by strictly enforcing parameterized type coercion.",
+    "files": {
+      "src/utils/sanitize.ts": "export function sanitizeInput(raw: unknown): string {\n  if (typeof raw !== 'string') return '';\n  return raw.replace(/[^a-zA-Z0-9_\\-\\.]/g, '');\n}\n"
+    }
+  },
+  {
+    "id": "intent-growth-csv",
+    "title": "Streaming CSV & Parquet Data Export",
+    "description": "Enable asynchronous streaming export of analytics datasets directly into downloadable files.",
+    "sourceType": "roadmap",
+    "sourceRef": "Linear PROD-88",
+    "sourceMetadata": {
+      "arrImpact": 95000,
+      "tier": "growth"
+    },
+    "forkRepoName": "task-growth-csv",
+    "status": "pending",
+    "growthScore": 68,
+    "costScore": -5,
+    "riskScore": 15,
+    "executiveSummary": "Fulfills the #1 most requested feature on the public roadmap, unblocking expansion in the mid-market tier.",
+    "files": {
+      "src/routes/export.ts": "export async function streamExport(data: any[]): Promise<Response> {\n  const csv = data.map(row => Object.values(row).join(',')).join('\\n');\n  return new Response(csv, { headers: { 'content-type': 'text/csv' } });\n}\n"
+    }
+  }
+]

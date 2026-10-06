@@ -1,0 +1,28 @@
+{
+  "name": "dispatch",
+  "version": "1.0.0",
+  "description": "Dispatch: The Strategic Git Platform for the Agentic Era",
+  "main": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "cf-typegen": "wrangler types",
+    "setup": "node scripts/setup.mjs"
+  },
+  "keywords": [
+    "cloudflare",
+    "cloudflare-workers",
+    "cloudflare-artifacts",
+    "git",
+    "ai-agents",
+    "developer-tools"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261006.1",
+    "typescript": "^5.6.2",
+    "wrangler": "^4.148.0"
+  }
+}

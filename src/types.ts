@@ -1,0 +1,66 @@
+// Environment bindings and Core Domain Types for Dispatch
+
+export interface Env {
+  ARTIFACTS: any; // Cloudflare Artifacts namespace binding
+  DB: D1Database;
+  AI: any;        // Cloudflare Workers AI binding
+  ASSETS?: Fetcher;
+}
+
+export type SourceType = "crm" | "telemetry" | "security" | "roadmap";
+
+export interface SourceMetadata {
+  arrImpact?: number;
+  customer?: string;
+  cveSeverity?: string;
+  cveId?: string;
+  latencyImpactMs?: number;
+  errorRateReduction?: number;
+  tier?: "enterprise" | "growth" | "starter";
+}
+
+export interface StrategicWeights {
+  growth: number;
+  cost: number;
+  risk: number;
+}
+
+export interface IntentPackage {
+  id: string;
+  title: string;
+  description: string;
+  sourceType: SourceType;
+  sourceRef: string;
+  sourceMetadata: SourceMetadata;
+  forkRepoName: string;
+  status: "pending" | "forked" | "evaluated" | "reconciled" | "merged";
+  growthScore: number;
+  costScore: number;
+  riskScore: number;
+  compositeScore: number;
+  executiveSummary: string;
+  previewUrl?: string;
+  diffSummary?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReconciliationRecord {
+  id: string;
+  primaryIntentId: string;
+  secondaryIntentId: string;
+  reconciledRepoName: string;
+  status: "pending" | "in_progress" | "resolved" | "failed";
+  conflictFiles: string[];
+  resolutionSummary: string;
+  createdAt: string;
+}
+
+export interface DeploymentRecord {
+  id: string;
+  batchId: string;
+  intentIds: string[];
+  mergedCommitHash?: string;
+  status: string;
+  deployedAt: string;
+}

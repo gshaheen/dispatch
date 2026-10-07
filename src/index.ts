@@ -63,13 +63,30 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
   const clientIp = request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for") || "direct";
   const userAgent = request.headers.get("user-agent") || "";
   const clientToken = request.headers.get("x-dispatch-client");
+  const accessKeyHeader = request.headers.get("x-dispatch-access-key") || url.searchParams.get("access");
+  const expectedKey = env.DEMO_ACCESS_KEY || "cf-dispatch-2026";
 
-  // 1. Block automated scrapers/bots on state-mutation or AI endpoints
+  // Verify access key status
+  if (url.pathname === "/api/auth/verify" && request.method === "GET") {
+    return json({ authenticated: accessKeyHeader === expectedKey });
+  }
+
+  // 1. Layer 3 Access Key Lockdown: Guard all state mutations & AI inference
+  if (request.method === "POST" && url.pathname.startsWith("/api/")) {
+    if (accessKeyHeader !== expectedKey) {
+      return json({
+        error: "Demo Access Key Required: Mutation operations (Workers AI evaluation, conflict reconciliation, batch deployment, reset) require authorization. Provide key via URL (?access=cf-dispatch-2026) or in the header.",
+        code: "UNAUTHORIZED_DEMO_MUTATION"
+      }, 401);
+    }
+  }
+
+  // 2. Block automated scrapers/bots on state-mutation or AI endpoints
   if (request.method === "POST" && isKnownMaliciousBot(userAgent) && !clientToken) {
     return json({ error: "Automated scraper blocked by Dispatch Security Shield" }, 403);
   }
 
-  // 2. Rate limit expensive AI inference endpoints (max 8 requests per minute per IP)
+  // 3. Rate limit expensive AI inference endpoints (max 8 requests per minute per IP)
   if (url.pathname === "/api/evaluate-custom" || url.pathname === "/api/reconcile" || url.pathname === "/api/intents/evaluate") {
     const rl = checkRateLimit(`ai:${clientIp}`, 8, 60000);
     if (!rl.allowed) {
@@ -80,7 +97,7 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
     }
   }
 
-  // 3. Rate limit environment reset endpoint (max 10 resets per minute per IP)
+  // 4. Rate limit environment reset endpoint (max 10 resets per minute per IP)
   if (url.pathname === "/api/demo/reset") {
     const rl = checkRateLimit(`reset:${clientIp}`, 10, 60000);
     if (!rl.allowed) {

@@ -897,6 +897,44 @@ input[type="range"]::-webkit-slider-thumb {
   animation: modal-fade-in 0.15s ease-out;
 }
 
+.modal-card-sm {
+  max-width: 440px;
+}
+
+/* Auth Status Indicator */
+.auth-status-btn {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.12s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.auth-status-locked {
+  background-color: rgba(245, 158, 11, 0.08);
+  color: var(--signal-warning);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.auth-status-locked:hover {
+  background-color: rgba(245, 158, 11, 0.16);
+  border-color: var(--signal-warning);
+}
+
+.auth-status-unlocked {
+  background-color: rgba(16, 185, 129, 0.08);
+  color: var(--signal-success);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.auth-status-unlocked:hover {
+  background-color: rgba(16, 185, 129, 0.16);
+}
+
 @keyframes modal-fade-in {
   from { opacity: 0; transform: scale(0.98); }
   to { opacity: 1; transform: scale(1); }

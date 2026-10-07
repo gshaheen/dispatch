@@ -61,7 +61,8 @@
         <span><span class="pill-dot"></span>Workers AI</span>
       </div>
 
-      <div>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <button type="button" class="auth-status-btn auth-status-locked" id="btn-auth-status" title="Demo mutation permissions. Click to unlock.">Read-Only</button>
         <button class="btn-secondary btn-danger-subtle" id="btn-demo-reset">Reset Environment</button>
       </div>
     </div>
@@ -321,6 +322,36 @@
             <!-- Code snippets -->
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Passcode Access Key Modal (shadcn Dialog style) -->
+  <div class="modal-backdrop" id="passcode-modal" style="display: none;">
+    <div class="modal-card modal-card-sm">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title-row">
+            <h2>Demo Access Authorization</h2>
+          </div>
+          <div class="modal-subtitle">Provide key to unlock live Workers AI & deployment mutations.</div>
+        </div>
+        <button class="modal-close-btn" id="modal-passcode-close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <form id="form-passcode" style="display: flex; flex-direction: column; gap: 12px;">
+          <label style="font-size: 0.74rem; font-weight: 600; color: var(--text-strong);">Access Key</label>
+          <input type="password" id="input-passcode" placeholder="Enter key (e.g. cf-dispatch-2026)" required
+                 style="background: var(--bg-control); border: 1px solid var(--border-line); color: var(--text-strong); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 0.8rem; font-family: monospace;">
+          <div style="font-size: 0.7rem; color: var(--text-subtle);">
+            Judges evaluation default: <code style="color: var(--brand-orange);">cf-dispatch-2026</code>
+          </div>
+          <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px;">
+            <button type="button" class="btn-secondary" id="btn-passcode-cancel">Cancel</button>
+            <button type="submit" class="btn-primary" style="width: auto; padding: 6px 16px;">Unlock Full Access</button>
+          </div>
+        </form>
       </div>
     </div>
   </div>

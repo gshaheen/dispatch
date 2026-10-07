@@ -5,6 +5,7 @@ export interface Env {
   DB: D1Database;
   AI: any;        // Cloudflare Workers AI binding
   ASSETS?: Fetcher;
+  DEMO_ACCESS_KEY?: string;
 }
 
 export type SourceType = "crm" | "telemetry" | "security" | "roadmap";

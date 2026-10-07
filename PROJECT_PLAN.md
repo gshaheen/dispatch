@@ -195,6 +195,16 @@ To guarantee flawless demo rehearsals, video takes, and live presentations:
 - [x] Create comprehensive, world-class [`README.md`](file:///Users/georgeshaheen/Desktop/repos/dispatch/README.md) with visual architecture diagrams, 3-minute self-hosting quickstart, and full 5–10 minute demonstration video script.
 - [x] Synchronized with public GitHub repository: [https://github.com/gshaheen/dispatch](https://github.com/gshaheen/dispatch).
 
+### Phase 7: Security Guardrails & Layer 3 Passcode Protection (COMPLETED)
+- [x] Edge IP Rate Limiter & Abuse Shield: In-memory sliding-window bucket capping AI inference (8 req/min) and resets (10 req/min) to prevent resource drain while allowing natural evaluator testing.
+- [x] Automated Scraper Blocker: Intercepts automated headless scrapers (`python-requests`, `aiohttp`, `scrapy`, `sqlmap`) missing the application token.
+- [x] Layer 3 Passcode / Access Key Authorization:
+  * Protects state mutations (`POST /api/weights`, `POST /api/reconcile`, `POST /api/deploy-batch`, `POST /api/demo/reset`, `POST /api/evaluate-custom`) behind configurable `DEMO_ACCESS_KEY` (default: `cf-dispatch-2026`).
+  * Preserves frictionless public read-only access (`GET /api/intents`, `GET /api/weights`, `GET /api/batch`, `GET /api/conflicts`) so judges and visitors can freely explore the live queue, inspect packages, and evaluate client-side dynamic re-ranking.
+  * Seamless presenter URL parameter: visiting `?access=cf-dispatch-2026` automatically registers and persists the key in `localStorage` and cleans the URL via `history.replaceState`.
+  * Interactive shadcn-style Passcode Dialog interceptor: unauthorized mutations trigger a clean modal prompt with default key assistance.
+  * Environment reset pruning fix: verified that custom intent submissions (`task-custom-*`) are thoroughly deleted from both Cloudflare Artifacts forks and D1 database tables upon reset.
+
 ---
 
 ## 9. Key File Structure (Target)

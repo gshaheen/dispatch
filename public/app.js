@@ -8,6 +8,7 @@ let updateTimeout = null;
 document.addEventListener("DOMContentLoaded", () => {
   initTheme();
   initModal();
+  initPasscodeModal();
   initTerminal();
   initApp();
 });
@@ -284,18 +285,162 @@ function updateSliderUI() {
   document.getElementById("val-risk").textContent = Math.round(activeWeights.risk * 100) + "%";
 }
 
-const API_HEADERS = {
-  "Content-Type": "application/json",
-  "x-dispatch-client": "dispatch-console-v1"
-};
+// ── Authorization & Access Key Manager (Layer 3) ────────────────────────────
+
+function getAccessKey() {
+  return localStorage.getItem("dispatch-access-key") || "";
+}
+
+function setAccessKey(key) {
+  if (key) {
+    localStorage.setItem("dispatch-access-key", key);
+  } else {
+    localStorage.removeItem("dispatch-access-key");
+  }
+  updateAuthUI();
+}
+
+function getApiHeaders() {
+  const key = getAccessKey();
+  const headers = {
+    "Content-Type": "application/json",
+    "x-dispatch-client": "dispatch-console-v1"
+  };
+  if (key) {
+    headers["x-dispatch-access-key"] = key;
+  }
+  return headers;
+}
+
+async function updateAuthUI() {
+  const btn = document.getElementById("btn-auth-status");
+  if (!btn) return;
+  const key = getAccessKey();
+  if (!key) {
+    btn.className = "auth-status-btn auth-status-locked";
+    btn.textContent = "Read-Only";
+    btn.title = "Demo mutations locked. Click to enter access key.";
+    return;
+  }
+
+  try {
+    const res = await fetch("/api/auth/verify", {
+      headers: { "x-dispatch-access-key": key }
+    });
+    const data = await res.json();
+    if (data.authenticated) {
+      btn.className = "auth-status-btn auth-status-unlocked";
+      btn.textContent = "● Unlocked";
+      btn.title = "Demo mutation access authorized. Click to change key.";
+    } else {
+      btn.className = "auth-status-btn auth-status-locked";
+      btn.textContent = "Read-Only";
+      btn.title = "Invalid key. Click to re-enter access key.";
+    }
+  } catch (err) {
+    btn.className = "auth-status-btn auth-status-unlocked";
+    btn.textContent = "● Unlocked";
+  }
+}
+
+function initPasscodeModal() {
+  // Extract ?access= parameter from URL if provided (zero friction for judges/presenter)
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlAccess = urlParams.get("access");
+  if (urlAccess) {
+    localStorage.setItem("dispatch-access-key", urlAccess);
+    const cleanUrl = window.location.pathname;
+    window.history.replaceState({}, document.title, cleanUrl);
+    setTimeout(() => {
+      logTerminal("WORKER", "Access key recognized from URL parameter (?access=...) and saved", "worker");
+    }, 600);
+  }
+
+  updateAuthUI();
+
+  const authBtn = document.getElementById("btn-auth-status");
+  const modal = document.getElementById("passcode-modal");
+  const closeBtn = document.getElementById("modal-passcode-close");
+  const cancelBtn = document.getElementById("btn-passcode-cancel");
+  const form = document.getElementById("form-passcode");
+  const input = document.getElementById("input-passcode");
+
+  if (authBtn) {
+    authBtn.addEventListener("click", () => openPasscodeModal());
+  }
+
+  if (closeBtn) {
+    closeBtn.addEventListener("click", () => closePasscodeModal());
+  }
+
+  if (cancelBtn) {
+    cancelBtn.addEventListener("click", () => closePasscodeModal());
+  }
+
+  if (modal) {
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) closePasscodeModal();
+    });
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && modal && modal.style.display === "flex") {
+      closePasscodeModal();
+    }
+  });
+
+  if (form) {
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const enteredKey = input.value.trim();
+      if (!enteredKey) return;
+
+      try {
+        const res = await fetch("/api/auth/verify", {
+          headers: { "x-dispatch-access-key": enteredKey }
+        });
+        const data = await res.json();
+        if (data.authenticated) {
+          setAccessKey(enteredKey);
+          closePasscodeModal();
+          showToast("Access unlocked! Mutations & AI inference enabled.");
+          logTerminal("WORKER", "Demo mutation key verified and authorized", "worker");
+        } else {
+          showToast("Invalid access key. Use 'cf-dispatch-2026' or check your key.");
+          logTerminal("WORKER", "Demo authorization rejected: invalid key", "reset");
+        }
+      } catch (err) {
+        showToast("Error verifying key: " + err.message);
+      }
+    });
+  }
+}
+
+function openPasscodeModal() {
+  const modal = document.getElementById("passcode-modal");
+  const input = document.getElementById("input-passcode");
+  if (!modal) return;
+  if (input) input.value = getAccessKey();
+  modal.style.display = "flex";
+  if (input) input.focus();
+}
+
+function closePasscodeModal() {
+  const modal = document.getElementById("passcode-modal");
+  if (modal) modal.style.display = "none";
+}
 
 async function syncWeightsWithServer() {
   try {
-    await fetch("/api/weights", {
+    const res = await fetch("/api/weights", {
       method: "POST",
-      headers: API_HEADERS,
+      headers: getApiHeaders(),
       body: JSON.stringify(activeWeights),
     });
+    if (res.status === 401) {
+      // In read-only mode, slider changes re-rank locally without blocking the user
+      return;
+    }
     logTerminal("D1", `POST /api/weights -> persisted weights { growth: ${activeWeights.growth.toFixed(2)}, cost: ${activeWeights.cost.toFixed(2)}, risk: ${activeWeights.risk.toFixed(2)} }`, "d1");
     await loadBatch();
     await loadConflicts();
@@ -497,15 +642,23 @@ async function triggerReconciliation(intentA, intentB) {
   try {
     const res = await fetch("/api/reconcile", {
       method: "POST",
-      headers: API_HEADERS,
+      headers: getApiHeaders(),
       body: JSON.stringify({ intentA, intentB }),
     });
+    if (res.status === 401) {
+      showToast("Access key required to run Workers AI reconciliation");
+      logTerminal("RECONCILER", "Mutation blocked: 401 Unauthorized (access key required)", "reset");
+      openPasscodeModal();
+      return;
+    }
     const data = await res.json();
     if (data.success) {
       logTerminal("WORKERS-AI", `AST union complete: zero conflict markers generated`, "ai");
       logTerminal("D1", `INSERT INTO reconciliations (status='resolved') -> updated intents`, "d1");
       showToast(`Resolved in ${data.reconciledRepoName} with zero conflict markers!`);
       await refreshAll();
+    } else {
+      showToast("Reconciliation failed: " + (data.error || "Unknown error"));
     }
   } catch (e) {
     showToast("Reconciliation failed: " + e.message);
@@ -524,9 +677,15 @@ async function handleDeployBatch() {
   try {
     const res = await fetch("/api/deploy-batch", {
       method: "POST",
-      headers: API_HEADERS,
+      headers: getApiHeaders(),
       body: JSON.stringify({ intentIds }),
     });
+    if (res.status === 401) {
+      showToast("Access key required to deploy release batch");
+      logTerminal("DEPLOY", "Mutation blocked: 401 Unauthorized (access key required)", "reset");
+      openPasscodeModal();
+      return;
+    }
     const data = await res.json();
     if (data.success) {
       logTerminal("ARTIFACTS", `Pruning deployed forks: [${intentIds.join(", ")}]`, "artifacts");
@@ -534,6 +693,8 @@ async function handleDeployBatch() {
       logTerminal("WORKER", `Production target updated to release hash ${data.deployment.batchId} (200 OK)`, "worker");
       showToast(`Deployed ${data.deployment.count} PRs successfully! Deployed forks pruned.`);
       await refreshAll();
+    } else {
+      showToast("Deployment failed: " + (data.error || "Unknown error"));
     }
   } catch (e) {
     showToast("Deployment failed: " + e.message);
@@ -547,8 +708,14 @@ async function handleDemoReset() {
   try {
     const res = await fetch("/api/demo/reset", {
       method: "POST",
-      headers: API_HEADERS,
+      headers: getApiHeaders(),
     });
+    if (res.status === 401) {
+      showToast("Access key required to reset demo environment");
+      logTerminal("RESET", "Mutation blocked: 401 Unauthorized (access key required)", "reset");
+      openPasscodeModal();
+      return;
+    }
     const data = await res.json();
     if (data.success) {
       logTerminal("ARTIFACTS", `Pruned ${data.prunedForks?.length || 0} ephemeral forks from namespace 'default'`, "artifacts");
@@ -556,6 +723,8 @@ async function handleDemoReset() {
       logTerminal("D1", "Catalog re-seeded into evaluated baseline (10 intent packages)", "d1");
       showToast("Environment reset! Ephemeral forks pruned & catalog initialized.");
       await refreshAll();
+    } else {
+      showToast("Reset error: " + (data.error || "Unknown error"));
     }
   } catch (e) {
     showToast("Reset error: " + e.message);
@@ -576,7 +745,7 @@ async function handleCustomIntentSubmit(e) {
   try {
     const res = await fetch("/api/evaluate-custom", {
       method: "POST",
-      headers: API_HEADERS,
+      headers: getApiHeaders(),
       body: JSON.stringify({
         title,
         description,
@@ -585,6 +754,12 @@ async function handleCustomIntentSubmit(e) {
         codeDiff: `// Feature: ${title}\n// Description: ${description}\nexport function execute() {\n  return { success: true, timestamp: Date.now() };\n}\n`,
       }),
     });
+    if (res.status === 401) {
+      showToast("Access key required to run Workers AI evaluation");
+      logTerminal("WORKERS-AI", "Mutation blocked: 401 Unauthorized (access key required)", "reset");
+      openPasscodeModal();
+      return;
+    }
     const data = await res.json();
     if (data.success) {
       logTerminal("WORKERS-AI", `Llama 3.3 70B evaluation complete: Growth=${data.evaluation.growthScore}, Cost=${data.evaluation.costScore}, Risk=${data.evaluation.riskScore}`, "ai");
@@ -601,6 +776,8 @@ async function handleCustomIntentSubmit(e) {
       if (data.intent) {
         openIntentModal(data.intent);
       }
+    } else {
+      showToast("Evaluation error: " + (data.error || "Unknown error"));
     }
   } catch (err) {
     showToast("Evaluation error: " + err.message);

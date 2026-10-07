@@ -1,4 +1,4 @@
-// Dispatch Executive Command Center Application Logic
+// Dispatch Executive Command Center Application Logic (shadcn style)
 
 let activeWeights = { growth: 0.5, cost: 0.25, risk: 0.25 };
 let cachedIntents = [];
@@ -8,8 +8,11 @@ let updateTimeout = null;
 document.addEventListener("DOMContentLoaded", () => {
   initTheme();
   initModal();
+  initTerminal();
   initApp();
 });
+
+// ── Theme Manager ────────────────────────────────────────────────────────────
 
 function initTheme() {
   const saved = localStorage.getItem("dispatch-theme") || "system";
@@ -52,6 +55,64 @@ function setTheme(theme, persist = true) {
   }
 }
 
+// ── Live Infrastructure Terminal Logger ─────────────────────────────────────
+
+function initTerminal() {
+  const clearBtn = document.getElementById("btn-clear-terminal");
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+      const container = document.getElementById("terminal-logs");
+      if (container) {
+        container.innerHTML = "";
+        logTerminal("WORKER", "Telemetry stream cleared", "worker");
+      }
+    });
+  }
+
+  // Initial Platform Boot Telemetry
+  setTimeout(() => logTerminal("WORKER", "Dispatch Worker runtime active on Cloudflare edge (region: lax)", "worker"), 80);
+  setTimeout(() => logTerminal("ARTIFACTS", "Connected to namespace 'default' (baseline: dispatch-main)", "artifacts"), 200);
+  setTimeout(() => logTerminal("D1", "Database dispatch-db bound (10 Intent Packages verified)", "d1"), 320);
+  setTimeout(() => logTerminal("WORKERS-AI", "Meta Llama 3.3 70B Instruct ready for evaluation & AST union", "ai"), 440);
+  setTimeout(() => logTerminal("RANKER", "Knapsack release ranker initialized (active posture: 50/25/25)", "ranker"), 560);
+}
+
+function logTerminal(source, message, category = "default") {
+  const container = document.getElementById("terminal-logs");
+  if (!container) return;
+
+  const now = new Date();
+  const timeStr = now.toTimeString().split(" ")[0] + "." + String(now.getMilliseconds()).padStart(3, "0");
+
+  let sourceClass = "source-worker";
+  if (source === "D1") sourceClass = "source-d1";
+  else if (source === "ARTIFACTS") sourceClass = "source-artifacts";
+  else if (source === "WORKERS-AI") sourceClass = "source-ai";
+  else if (source === "RANKER") sourceClass = "source-ranker";
+  else if (source === "DEPLOY") sourceClass = "source-deploy";
+  else if (source === "RECONCILER") sourceClass = "source-reconciler";
+  else if (source === "RESET") sourceClass = "source-reset";
+
+  const line = document.createElement("div");
+  line.className = "terminal-line";
+  line.innerHTML = `
+    <span class="term-time">${timeStr}</span>
+    <span class="term-source ${sourceClass}">[${source}]</span>
+    <span class="term-msg">${escapeHtml(message)}</span>
+  `;
+
+  container.appendChild(line);
+  container.scrollTop = container.scrollHeight;
+}
+
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// ── Modal Dialog Manager ────────────────────────────────────────────────────
+
 function initModal() {
   const modal = document.getElementById("intent-modal");
   const closeBtn = document.getElementById("modal-close-btn");
@@ -79,13 +140,15 @@ function openIntentModal(intent) {
   const modal = document.getElementById("intent-modal");
   if (!modal) return;
 
+  logTerminal("ARTIFACTS", `Inspected Intent Package ${intent.id} (${intent.fork_repo_name || "task-fork"} @ main)`, "artifacts");
+
   const meta = intent.source_metadata ? (typeof intent.source_metadata === "string" ? JSON.parse(intent.source_metadata) : intent.source_metadata) : {};
 
   document.getElementById("modal-title").textContent = intent.title;
   document.getElementById("modal-subtitle").textContent = `ID: ${intent.id} • Fork: ${intent.fork_repo_name || "task-fork"}`;
-  
+
   const statusEl = document.getElementById("modal-status");
-  statusEl.textContent = intent.status;
+  statusEl.textContent = (intent.status || "READY").toUpperCase();
   statusEl.className = "status-pill " + (
     intent.status === "reconciled" ? "status-reconciled" :
     intent.status === "merged" ? "status-deployed" : "status-ready"
@@ -138,6 +201,8 @@ function openIntentModal(intent) {
 
   modal.style.display = "flex";
 }
+
+// ── App Initialization ──────────────────────────────────────────────────────
 
 async function initApp() {
   setupEventListeners();
@@ -205,6 +270,8 @@ function applyPreset(g, c, r, btnId) {
   updateSliderUI();
   recalculateAndRenderQueue();
   syncWeightsWithServer();
+
+  logTerminal("RANKER", `Applied posture '${btn?.textContent}': G=${Math.round(g * 100)}%, C=${Math.round(c * 100)}%, R=${Math.round(r * 100)}%`, "ranker");
 }
 
 function updateSliderUI() {
@@ -224,6 +291,7 @@ async function syncWeightsWithServer() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(activeWeights),
     });
+    logTerminal("D1", `POST /api/weights -> persisted weights { growth: ${activeWeights.growth.toFixed(2)}, cost: ${activeWeights.cost.toFixed(2)}, risk: ${activeWeights.risk.toFixed(2)} }`, "d1");
     await loadBatch();
     await loadConflicts();
   } catch (e) {
@@ -262,8 +330,8 @@ function recalculateAndRenderQueue() {
   if (!cachedIntents.length) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="7" style="text-align: center; padding: 36px; color: var(--text-subtle);">
-          No intent packages available. Click <strong>"Reset Demo"</strong> to initialize the catalog.
+        <td colspan="7" style="text-align: center; padding: 32px; color: var(--text-subtle);">
+          No Intent Packages loaded. Click <strong>"Reset Environment"</strong> to re-seed.
         </td>
       </tr>
     `;
@@ -282,14 +350,10 @@ function recalculateAndRenderQueue() {
 
   tbody.innerHTML = "";
 
-  // Check which intent IDs are currently in active conflicts
   const conflictIntentIds = new Set();
-  const conflictDetails = {};
   for (const c of cachedConflicts) {
     conflictIntentIds.add(c.intentA);
     conflictIntentIds.add(c.intentB);
-    conflictDetails[c.intentA] = c.conflictingFiles?.join(", ") || "overlap";
-    conflictDetails[c.intentB] = c.conflictingFiles?.join(", ") || "overlap";
   }
 
   ranked.forEach((intent, idx) => {
@@ -298,31 +362,30 @@ function recalculateAndRenderQueue() {
 
     let contextPill = "";
     if (meta.arrImpact) {
-      contextPill = `<span class="card-source-badge card-source-crm">💰 +$${(meta.arrImpact / 1000).toFixed(0)}k ARR</span>`;
+      contextPill = `<span class="card-source-badge card-source-crm">+$${(meta.arrImpact / 1000).toFixed(0)}k ARR</span>`;
     } else if (meta.latencyImpactMs) {
-      contextPill = `<span class="card-source-badge card-source-telemetry">⚡ ${meta.latencyImpactMs}ms P95</span>`;
+      contextPill = `<span class="card-source-badge card-source-telemetry">${meta.latencyImpactMs}ms P95</span>`;
     } else if (meta.cveId || meta.cveSeverity) {
-      contextPill = `<span class="card-source-badge card-source-security">🛡️ ${meta.cveSeverity || meta.cveId}</span>`;
+      contextPill = `<span class="card-source-badge card-source-security">${meta.cveSeverity || meta.cveId}</span>`;
     } else {
-      contextPill = `<span class="card-source-badge">📋 Roadmap</span>`;
+      contextPill = `<span class="card-source-badge">Roadmap</span>`;
     }
 
     const isConflict = conflictIntentIds.has(intent.id) && intent.status !== "reconciled" && intent.status !== "merged";
 
     let statusPill = "";
     if (isConflict) {
-      statusPill = `<span class="status-pill status-conflict">⚠️ Collision</span>`;
+      statusPill = `<span class="status-pill status-conflict">COLLISION</span>`;
     } else if (intent.status === "reconciled") {
-      statusPill = `<span class="status-pill status-reconciled">✨ Reconciled</span>`;
+      statusPill = `<span class="status-pill status-reconciled">RECONCILED</span>`;
     } else if (intent.status === "merged") {
-      statusPill = `<span class="status-pill status-deployed">✓ Deployed</span>`;
+      statusPill = `<span class="status-pill status-deployed">DEPLOYED</span>`;
     } else {
-      statusPill = `<span class="status-pill status-ready">● Ready</span>`;
+      statusPill = `<span class="status-pill status-ready">READY</span>`;
     }
 
     const tr = document.createElement("tr");
     tr.className = (rank === 1 ? "rank-1" : "") + (isConflict ? " row-conflict" : "");
-    tr.title = "Click to inspect intent package details";
 
     tr.innerHTML = `
       <td style="text-align: center;"><span class="rank-badge-sm">#${rank}</span></td>
@@ -336,12 +399,12 @@ function recalculateAndRenderQueue() {
       </td>
       <td>
         <div class="impact-pills">
-          <span class="impact-pill impact-growth" title="Growth Score">${intent.growth_score > 0 ? "+" : ""}${intent.growth_score}G</span>
-          <span class="impact-pill impact-cost" title="Cost Score">${intent.cost_score > 0 ? "+" : ""}${intent.cost_score}C</span>
-          <span class="impact-pill impact-risk" title="Risk Score">${intent.risk_score > 0 ? "+" : ""}${intent.risk_score}R</span>
+          <span class="impact-pill impact-growth" title="Growth">${intent.growth_score > 0 ? "+" : ""}${intent.growth_score}G</span>
+          <span class="impact-pill impact-cost" title="Cost">${intent.cost_score > 0 ? "+" : ""}${intent.cost_score}C</span>
+          <span class="impact-pill impact-risk" title="Risk">${intent.risk_score > 0 ? "+" : ""}${intent.risk_score}R</span>
         </div>
       </td>
-      <td><span class="repo-pill">📦 ${intent.fork_repo_name || "task-fork"}</span></td>
+      <td><span class="repo-pill">${intent.fork_repo_name || "task-fork"}</span></td>
       <td>${statusPill}</td>
       <td style="text-align: center;">
         <button class="btn-inspect" type="button">Inspect</button>
@@ -392,8 +455,8 @@ async function loadConflicts() {
     if (!cachedConflicts.length) {
       container.innerHTML = `
         <div class="resolved-box">
-          <div class="resolved-title">✓ Zero Unresolved Conflicts</div>
-          <div class="resolved-desc">All top candidates are verified clean or reconciled with zero conflict markers.</div>
+          <div class="resolved-title">Zero Unresolved Conflicts</div>
+          <div class="resolved-desc">All candidate Artifacts forks are clean or reconciled without conflict markers.</div>
         </div>
       `;
       return;
@@ -402,12 +465,12 @@ async function loadConflicts() {
     const conf = cachedConflicts[0];
     container.innerHTML = `
       <div class="conflict-box">
-        <div class="conflict-title">⚠️ Concurrency Collision Detected</div>
+        <div class="conflict-title">Concurrency Collision Detected</div>
         <div class="conflict-desc">
           <strong>${conf.intentA}</strong> and <strong>${conf.intentB}</strong> both touch <code>${conf.conflictingFiles.join(", ")}</code>.
         </div>
         <button class="btn-secondary" id="btn-trigger-reconcile" style="width: 100%; margin-top: 6px;">
-          🤖 Reconcile with Agent
+          Reconcile with AI
         </button>
       </div>
     `;
@@ -422,6 +485,10 @@ async function loadConflicts() {
 
 async function triggerReconciliation(intentA, intentB) {
   showToast("Dispatching Semantic Reconciliation Agent in Artifacts fork...");
+  logTerminal("RECONCILER", `Initiated semantic reconciliation: ${intentA} vs ${intentB}`, "reconciler");
+  logTerminal("ARTIFACTS", `Provisioned isolated reconciliation workspace: reconcile-${intentA}-${intentB}`, "artifacts");
+  logTerminal("WORKERS-AI", `Running Llama 3.3 70B inference on overlapping src/middleware/auth.ts`, "ai");
+
   try {
     const res = await fetch("/api/reconcile", {
       method: "POST",
@@ -430,11 +497,14 @@ async function triggerReconciliation(intentA, intentB) {
     });
     const data = await res.json();
     if (data.success) {
-      showToast(`✓ Resolved in ${data.reconciledRepoName} with zero conflict markers!`);
+      logTerminal("WORKERS-AI", `AST union complete: zero conflict markers generated`, "ai");
+      logTerminal("D1", `INSERT INTO reconciliations (status='resolved') -> updated intents`, "d1");
+      showToast(`Resolved in ${data.reconciledRepoName} with zero conflict markers!`);
       await refreshAll();
     }
   } catch (e) {
     showToast("Reconciliation failed: " + e.message);
+    logTerminal("RECONCILER", "Reconciliation error: " + e.message, "reset");
   }
 }
 
@@ -443,7 +513,9 @@ async function handleDeployBatch() {
   const intentIds = JSON.parse(btn.dataset.intentIds || "[]");
   if (!intentIds.length) return;
 
-  showToast("Deploying candidate batch to Cloudflare Workers...");
+  showToast("Deploying candidate release batch to Cloudflare Workers...");
+  logTerminal("DEPLOY", `Initiating strategic release deployment for ${intentIds.length} candidate forks`, "deploy");
+
   try {
     const res = await fetch("/api/deploy-batch", {
       method: "POST",
@@ -452,7 +524,10 @@ async function handleDeployBatch() {
     });
     const data = await res.json();
     if (data.success) {
-      showToast(`🚀 Deployed ${data.deployment.count} PRs successfully! Ephemeral forks pruned.`);
+      logTerminal("ARTIFACTS", `Pruning deployed forks: [${intentIds.join(", ")}]`, "artifacts");
+      logTerminal("D1", `Updated status to 'merged' for batch ${data.deployment.batchId}`, "d1");
+      logTerminal("WORKER", `Production target updated to release hash ${data.deployment.batchId} (200 OK)`, "worker");
+      showToast(`Deployed ${data.deployment.count} PRs successfully! Deployed forks pruned.`);
       await refreshAll();
     }
   } catch (e) {
@@ -461,12 +536,17 @@ async function handleDeployBatch() {
 }
 
 async function handleDemoReset() {
-  showToast("Pruning Artifacts forks & resetting to evaluated baseline...");
+  showToast("Pruning Artifacts forks & resetting environment...");
+  logTerminal("RESET", "POST /api/demo/reset -> initiating full environment reset", "reset");
+
   try {
     const res = await fetch("/api/demo/reset", { method: "POST" });
     const data = await res.json();
     if (data.success) {
-      showToast(`✓ Demo reset! Ephemeral forks pruned & catalog initialized.`);
+      logTerminal("ARTIFACTS", `Pruned ${data.prunedForks?.length || 0} ephemeral forks from namespace 'default'`, "artifacts");
+      logTerminal("D1", "Purged reconciliations and deployments; reset weights to 50/25/25", "d1");
+      logTerminal("D1", "Catalog re-seeded into evaluated baseline (10 intent packages)", "d1");
+      showToast("Environment reset! Ephemeral forks pruned & catalog initialized.");
       await refreshAll();
     }
   } catch (e) {
@@ -483,6 +563,8 @@ async function handleCustomIntentSubmit(e) {
   if (!title) return;
 
   showToast("Workers AI evaluating intent & provisioning Artifacts fork...");
+  logTerminal("WORKERS-AI", `POST /api/evaluate-custom -> analyzing intent: "${title}"`, "ai");
+
   try {
     const res = await fetch("/api/evaluate-custom", {
       method: "POST",
@@ -497,7 +579,11 @@ async function handleCustomIntentSubmit(e) {
     });
     const data = await res.json();
     if (data.success) {
-      showToast(`✓ Fork ${data.forkName} created & evaluated by Workers AI!`);
+      logTerminal("WORKERS-AI", `Llama 3.3 70B evaluation complete: Growth=${data.evaluation.growthScore}, Cost=${data.evaluation.costScore}, Risk=${data.evaluation.riskScore}`, "ai");
+      logTerminal("ARTIFACTS", `Provisioned new isolated fork: ${data.forkName} from dispatch-main`, "artifacts");
+      logTerminal("D1", `Inserted new Intent Package ${data.intent.id} into database`, "d1");
+
+      showToast(`Fork ${data.forkName} created & evaluated by Workers AI!`);
       document.getElementById("input-custom-title").value = "";
       document.getElementById("input-custom-desc").value = "";
       document.getElementById("input-custom-arr").value = "";

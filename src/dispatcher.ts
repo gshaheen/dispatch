@@ -25,7 +25,7 @@ export class SwarmDispatcher {
           id, title, description, source_type, source_ref, source_metadata,
           fork_repo_name, status, growth_score, cost_score, risk_score,
           composite_score, executive_summary, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'evaluated', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       `).bind(
         item.id,
         item.title,
@@ -34,13 +34,19 @@ export class SwarmDispatcher {
         item.sourceRef,
         JSON.stringify(item.sourceMetadata),
         item.forkRepoName,
-        item.status || "pending",
         item.growthScore,
         item.costScore,
         item.riskScore,
-        item.status === "evaluated" ? composite : 0,
+        Math.round(composite * 10) / 10,
         item.executiveSummary
       ).run();
+
+      // Create isolated fork in Artifacts if it does not already exist
+      try {
+        await this.artifacts.forkRepo("dispatch-main", item.forkRepoName);
+      } catch (e: any) {
+        // Fork may already exist or baseline is ready
+      }
     }
 
     return seedData.length;

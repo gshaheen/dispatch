@@ -105,7 +105,15 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
       "SELECT * FROM intents ORDER BY composite_score DESC, created_at DESC"
     ).all();
 
-    return json({ intents: rows.results || [] });
+    const intents = (rows.results || []).map((row: any) => {
+      const seedItem = (seedData as any[]).find((s) => s.id === row.id);
+      return {
+        ...row,
+        files: seedItem?.files || null,
+      };
+    });
+
+    return json({ intents });
   }
 
   // Seed Catalog into D1
@@ -216,16 +224,68 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
         codeDiff?: string;
       };
 
+      const title = body.title || "Custom Feature";
+      const description = body.description || "";
+      const sourceType = body.sourceType || "roadmap";
+      const sourceMetadata = body.sourceMetadata || {};
+      const diffString = body.codeDiff || `// Added ${title}\nexport function customFeature() {\n  return { enabled: true };\n}\n`;
+
       const evaluator = new StrategicEvaluator(env);
       const evalResult = await evaluator.evaluateIntent(
-        body.title || "Custom Change",
-        body.description || "",
-        body.sourceType || "roadmap",
-        body.sourceMetadata || {},
-        body.codeDiff || "// custom changes"
+        title,
+        description,
+        sourceType,
+        sourceMetadata,
+        diffString
       );
 
-      return json({ success: true, evaluation: evalResult });
+      const customId = `intent-custom-${Date.now().toString(36)}`;
+      const forkName = `task-custom-${Date.now().toString(36)}`;
+
+      // Fork isolated repository in Cloudflare Artifacts
+      try {
+        await artifacts.forkRepo("dispatch-main", forkName);
+      } catch (e: any) {
+        console.warn(`Artifacts fork for ${forkName}:`, e.message);
+      }
+
+      // Compute composite score with current strategic weights
+      const weightRow = await env.DB.prepare("SELECT growth_weight, cost_weight, risk_weight FROM strategic_weights WHERE id = 1").first<any>();
+      const w = weightRow || { growth_weight: 0.5, cost_weight: 0.25, risk_weight: 0.25 };
+      const composite = (evalResult.growthScore * w.growth_weight) +
+                        (evalResult.costScore * w.cost_weight) +
+                        (evalResult.riskScore * w.risk_weight);
+
+      // Insert new Intent Package into D1
+      await env.DB.prepare(`
+        INSERT INTO intents (
+          id, title, description, source_type, source_ref, source_metadata,
+          fork_repo_name, status, growth_score, cost_score, risk_score,
+          composite_score, executive_summary, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'evaluated', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      `).bind(
+        customId,
+        title,
+        description,
+        sourceType,
+        `Custom Evaluation #${Date.now().toString().slice(-4)}`,
+        JSON.stringify(sourceMetadata),
+        forkName,
+        evalResult.growthScore,
+        evalResult.costScore,
+        evalResult.riskScore,
+        Math.round(composite * 10) / 10,
+        evalResult.executiveSummary
+      ).run();
+
+      const newIntent = await env.DB.prepare("SELECT * FROM intents WHERE id = ?").bind(customId).first<any>();
+
+      return json({
+        success: true,
+        intent: newIntent,
+        forkName,
+        evaluation: evalResult
+      });
     } catch (err: any) {
       return json({ error: err.message }, 500);
     }
@@ -293,12 +353,16 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
       // 1. Prune ephemeral Artifacts forks
       const pruned = await artifacts.pruneEphemeralForks();
 
-      // 2. Reset strategic weights to default 50/25/25
+      // 2. Clear reconciliations and deployments records
+      await env.DB.prepare("DELETE FROM reconciliations").run();
+      await env.DB.prepare("DELETE FROM deployments").run();
+
+      // 3. Reset strategic weights to default 50/25/25
       await env.DB.prepare(
         "UPDATE strategic_weights SET growth_weight = 0.50, cost_weight = 0.25, risk_weight = 0.25, updated_at = CURRENT_TIMESTAMP WHERE id = 1"
       ).run();
 
-      // 3. Re-seed all intents back to pristine pending state
+      // 4. Re-seed all intents back to pristine evaluated state
       const dispatcher = new SwarmDispatcher(env);
       await dispatcher.seedCatalog();
 

@@ -73,14 +73,30 @@ export class ArtifactsService {
   }
 
   /**
-   * List all repositories in the namespace
+   * List all repositories in the namespace with cursor pagination
    */
   async listRepos(): Promise<Array<{ name: string }>> {
     if (!this.env.ARTIFACTS || typeof this.env.ARTIFACTS.list !== "function") {
       return [];
     }
-    const result = await this.env.ARTIFACTS.list();
-    return result.repos || result || [];
+    const allRepos: Array<{ name: string }> = [];
+    let cursor: string | undefined = undefined;
+
+    do {
+      try {
+        const result: any = await this.env.ARTIFACTS.list(cursor ? { cursor } : undefined);
+        const list = result?.repos || (Array.isArray(result) ? result : []);
+        for (const item of list) {
+          if (item?.name) allRepos.push({ name: item.name });
+        }
+        cursor = result?.cursor;
+      } catch (err) {
+        console.warn("Failed to list repos page:", err);
+        break;
+      }
+    } while (cursor);
+
+    return allRepos;
   }
 
   /**
@@ -89,10 +105,13 @@ export class ArtifactsService {
   async deleteRepo(name: string): Promise<boolean> {
     if (!this.env.ARTIFACTS) return false;
     try {
-      await this.env.ARTIFACTS.delete(name);
-      return true;
-    } catch (err) {
-      console.warn(`Error deleting repository ${name}:`, err);
+      if (typeof this.env.ARTIFACTS.delete === "function") {
+        await this.env.ARTIFACTS.delete(name);
+        return true;
+      }
+      return false;
+    } catch (err: any) {
+      console.warn(`Error deleting repository ${name}:`, err?.message || err);
       return false;
     }
   }
@@ -104,6 +123,7 @@ export class ArtifactsService {
     const repos = await this.listRepos();
     const deleted: string[] = [];
 
+    // Delete any matching from namespace listing
     for (const repo of repos) {
       const name = repo.name;
       if (name.startsWith("task-") || name.startsWith("reconcile-")) {
@@ -111,6 +131,28 @@ export class ArtifactsService {
         if (ok) deleted.push(name);
       }
     }
+
+    // Also check known names recorded in D1 to catch any unlisted forks
+    try {
+      const intentRows = await this.env.DB.prepare("SELECT fork_repo_name FROM intents").all<{ fork_repo_name: string }>();
+      for (const r of (intentRows.results || [])) {
+        if (r.fork_repo_name && !deleted.includes(r.fork_repo_name)) {
+          const ok = await this.deleteRepo(r.fork_repo_name);
+          if (ok) deleted.push(r.fork_repo_name);
+        }
+      }
+
+      const recRows = await this.env.DB.prepare("SELECT reconciled_repo_name FROM reconciliations").all<{ reconciled_repo_name: string }>();
+      for (const r of (recRows.results || [])) {
+        if (r.reconciled_repo_name && !deleted.includes(r.reconciled_repo_name)) {
+          const ok = await this.deleteRepo(r.reconciled_repo_name);
+          if (ok) deleted.push(r.reconciled_repo_name);
+        }
+      }
+    } catch (e) {
+      // D1 query error during cleanup fallback
+    }
+
     return deleted;
   }
 }

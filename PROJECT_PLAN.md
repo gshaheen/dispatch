@@ -232,7 +232,7 @@ To guarantee full compliance with Contest Rule #4 (*"The Project source code mus
 ### Quickstart for Anyone Launching Dispatch:
 ```bash
 # 1. Clone repository
-git clone https://github.com/<username>/dispatch.git
+git clone https://github.com/gshaheen/dispatch.git
 cd dispatch
 
 # 2. Install dependencies
@@ -247,4 +247,16 @@ npm run dev
 # 5. Or deploy live to Cloudflare in one command
 npm run deploy
 ```
+
+---
+
+## 11. Minimalist UI & Demo Streamlining Addendum
+
+- **Dynamic Deployment Queue Table:** Replaced card grid with a minimalist, data-dense table providing rank, priority score, intent title, business context badge, impact scores (Growth/Cost/Risk), Artifact fork name, and color-coded status.
+- **Intent Package Inspection Modal:** Any row or "Inspect" button opens a comprehensive modal displaying Workers AI executive summaries, multi-dimensional score breakdown, business context, Artifacts clone URL, and modified code diffs.
+- **Automatic Evaluated Baseline:** Baseline catalog seeds directly in the evaluated state with forks provisioned, eliminating manual fast-forward prerequisites before demoing.
+- **Immediate Conflict State Resolution:** Reconciled pairs dynamically clear from the concurrency collision card upon resolution and show purple `✨ Reconciled` badges in the queue.
+- **Artifacts Ephemeral Fork Pruning on Deploy:** Merged candidate releases and reset operations systematically prune ephemeral task and reconciliation forks from Cloudflare Artifacts.
+- **Live Custom Evaluation & Forking:** Custom intent submissions invoke Workers AI and automatically spin up isolated `task-custom-*` forks in Artifacts.
+
 

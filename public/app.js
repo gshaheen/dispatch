@@ -2,10 +2,12 @@
 
 let activeWeights = { growth: 0.5, cost: 0.25, risk: 0.25 };
 let cachedIntents = [];
+let cachedConflicts = [];
 let updateTimeout = null;
 
 document.addEventListener("DOMContentLoaded", () => {
   initTheme();
+  initModal();
   initApp();
 });
 
@@ -13,7 +15,6 @@ function initTheme() {
   const saved = localStorage.getItem("dispatch-theme") || "system";
   setTheme(saved, false);
 
-  // Setup theme button clicks
   document.querySelectorAll(".theme-switch-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const theme = btn.dataset.theme;
@@ -21,7 +22,6 @@ function initTheme() {
     });
   });
 
-  // Watch system color scheme changes
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
     const current = localStorage.getItem("dispatch-theme") || "system";
     if (current === "system") {
@@ -36,7 +36,6 @@ function setTheme(theme, persist = true) {
     localStorage.setItem("dispatch-theme", theme);
   }
 
-  // Update button active state
   document.querySelectorAll(".theme-switch-btn").forEach((b) => {
     b.classList.toggle("active", b.dataset.theme === theme);
   });
@@ -48,10 +47,96 @@ function setTheme(theme, persist = true) {
     document.documentElement.setAttribute("data-mode", "dark");
     document.documentElement.style.colorScheme = "dark";
   } else {
-    // System default
     document.documentElement.removeAttribute("data-mode");
     document.documentElement.style.colorScheme = "light dark";
   }
+}
+
+function initModal() {
+  const modal = document.getElementById("intent-modal");
+  const closeBtn = document.getElementById("modal-close-btn");
+
+  if (closeBtn) {
+    closeBtn.addEventListener("click", () => {
+      modal.style.display = "none";
+    });
+  }
+
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) {
+      modal.style.display = "none";
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && modal.style.display === "flex") {
+      modal.style.display = "none";
+    }
+  });
+}
+
+function openIntentModal(intent) {
+  const modal = document.getElementById("intent-modal");
+  if (!modal) return;
+
+  const meta = intent.source_metadata ? (typeof intent.source_metadata === "string" ? JSON.parse(intent.source_metadata) : intent.source_metadata) : {};
+
+  document.getElementById("modal-title").textContent = intent.title;
+  document.getElementById("modal-subtitle").textContent = `ID: ${intent.id} • Fork: ${intent.fork_repo_name || "task-fork"}`;
+  
+  const statusEl = document.getElementById("modal-status");
+  statusEl.textContent = intent.status;
+  statusEl.className = "status-pill " + (
+    intent.status === "reconciled" ? "status-reconciled" :
+    intent.status === "merged" ? "status-deployed" : "status-ready"
+  );
+
+  document.getElementById("modal-summary").textContent = intent.executive_summary || intent.description;
+
+  const compositeScore = (intent.dynamicScore || intent.composite_score || 0).toFixed(1);
+  document.getElementById("modal-score-composite").textContent = compositeScore;
+  document.getElementById("modal-score-growth").textContent = (intent.growth_score > 0 ? "+" : "") + intent.growth_score;
+  document.getElementById("modal-score-cost").textContent = (intent.cost_score > 0 ? "+" : "") + intent.cost_score;
+  document.getElementById("modal-score-risk").textContent = (intent.risk_score > 0 ? "+" : "") + intent.risk_score;
+
+  // Business Context Items
+  const contextGrid = document.getElementById("modal-context");
+  contextGrid.innerHTML = `
+    <div class="modal-context-item">
+      <span class="modal-context-label">Source Type</span>
+      <span class="modal-context-value">${intent.source_type?.toUpperCase() || "ROADMAP"}</span>
+    </div>
+    <div class="modal-context-item">
+      <span class="modal-context-label">Source Reference</span>
+      <span class="modal-context-value">${intent.source_ref || "N/A"}</span>
+    </div>
+    <div class="modal-context-item">
+      <span class="modal-context-label">Business Metric</span>
+      <span class="modal-context-value">${
+        meta.arrImpact ? `+$${(meta.arrImpact / 1000).toFixed(0)}k ARR` :
+        meta.latencyImpactMs ? `${meta.latencyImpactMs}ms Latency` :
+        meta.cveSeverity ? `${meta.cveSeverity}` : "Standard Roadmap"
+      }</span>
+    </div>
+  `;
+
+  // Repo Info
+  document.getElementById("modal-repo-name").textContent = intent.fork_repo_name || "task-fork";
+  document.getElementById("modal-repo-remote").textContent = `https://artifacts.cloudflare.com/repos/${intent.fork_repo_name || "task-fork"}.git`;
+
+  // Code Diff / Implementation Viewer
+  const diffViewer = document.getElementById("modal-diff");
+  if (intent.files && Object.keys(intent.files).length > 0) {
+    let diffContent = "";
+    for (const [file, code] of Object.entries(intent.files)) {
+      diffContent += `// ── ${file} ──────────────────────────────────────────\n${code}\n\n`;
+    }
+    diffViewer.textContent = diffContent.trim();
+  } else {
+    diffViewer.textContent = `// Candidate change description:\n${intent.description}\n\n// Isolated fork created at:\n// ${intent.fork_repo_name}`;
+  }
+
+  modal.style.display = "flex";
 }
 
 async function initApp() {
@@ -61,13 +146,12 @@ async function initApp() {
 
 async function refreshAll() {
   await loadWeights();
+  await loadConflicts();
   await loadIntents();
   await loadBatch();
-  await loadConflicts();
 }
 
 function setupEventListeners() {
-  // Slider listeners
   const growthSlider = document.getElementById("slider-growth");
   const costSlider = document.getElementById("slider-cost");
   const riskSlider = document.getElementById("slider-risk");
@@ -76,27 +160,19 @@ function setupEventListeners() {
   costSlider.addEventListener("input", (e) => onSliderChange("cost", parseFloat(e.target.value)));
   riskSlider.addEventListener("input", (e) => onSliderChange("risk", parseFloat(e.target.value)));
 
-  // Preset buttons
   document.getElementById("btn-preset-balanced").addEventListener("click", () => applyPreset(0.5, 0.25, 0.25, "btn-preset-balanced"));
   document.getElementById("btn-preset-growth").addEventListener("click", () => applyPreset(0.8, 0.1, 0.1, "btn-preset-growth"));
   document.getElementById("btn-preset-cost").addEventListener("click", () => applyPreset(0.1, 0.8, 0.1, "btn-preset-cost"));
   document.getElementById("btn-preset-risk").addEventListener("click", () => applyPreset(0.1, 0.1, 0.8, "btn-preset-risk"));
 
-  // Demo Controls
   document.getElementById("btn-demo-reset").addEventListener("click", handleDemoReset);
-  document.getElementById("btn-demo-fastforward").addEventListener("click", handleFastForward);
-
-  // Deploy Batch button
   document.getElementById("btn-deploy-batch").addEventListener("click", handleDeployBatch);
-
-  // Custom evaluation submit
   document.getElementById("form-custom-intent").addEventListener("submit", handleCustomIntentSubmit);
 }
 
 function onSliderChange(changedType, newValue) {
-  // Normalize remaining weights to total 1.0 (100%)
   const types = ["growth", "cost", "risk"];
-  const others = types.filter(t => t !== changedType);
+  const others = types.filter((t) => t !== changedType);
   const remainingTotal = 1.0 - newValue;
   const currentOtherSum = activeWeights[others[0]] + activeWeights[others[1]];
 
@@ -113,7 +189,6 @@ function onSliderChange(changedType, newValue) {
   updateSliderUI();
   recalculateAndRenderQueue();
 
-  // Debounced API sync
   clearTimeout(updateTimeout);
   updateTimeout = setTimeout(() => {
     syncWeightsWithServer();
@@ -122,8 +197,8 @@ function onSliderChange(changedType, newValue) {
 
 function applyPreset(g, c, r, btnId) {
   activeWeights = { growth: g, cost: c, risk: r };
-  
-  document.querySelectorAll(".preset-btn").forEach(b => b.classList.remove("active"));
+
+  document.querySelectorAll(".preset-btn").forEach((b) => b.classList.remove("active"));
   const btn = document.getElementById(btnId);
   if (btn) btn.classList.add("active");
 
@@ -149,7 +224,8 @@ async function syncWeightsWithServer() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(activeWeights),
     });
-    loadBatch();
+    await loadBatch();
+    await loadConflicts();
   } catch (e) {
     console.error("Failed to sync weights:", e);
   }
@@ -180,81 +256,105 @@ async function loadIntents() {
 }
 
 function recalculateAndRenderQueue() {
+  const tbody = document.getElementById("queue-tbody");
+  if (!tbody) return;
+
   if (!cachedIntents.length) {
-    document.getElementById("queue-container").innerHTML = `
-      <div style="text-align: center; padding: 40px; color: var(--text-muted);">
-        No intent packages loaded. Click <strong>"Seed / Fast-Forward"</strong> in Demo Controls.
-      </div>
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7" style="text-align: center; padding: 36px; color: var(--text-subtle);">
+          No intent packages available. Click <strong>"Reset Demo"</strong> to initialize the catalog.
+        </td>
+      </tr>
     `;
     return;
   }
 
-  // Recalculate dynamic score client-side for ultra-responsive slider dragging
-  const ranked = cachedIntents.map(intent => {
+  // Recalculate dynamic scores client-side
+  const ranked = cachedIntents.map((intent) => {
     const score = (intent.growth_score * activeWeights.growth) +
                   (intent.cost_score * activeWeights.cost) +
                   (intent.risk_score * activeWeights.risk);
     return { ...intent, dynamicScore: Math.round(score * 10) / 10 };
   });
 
-  // Sort descending by dynamic score
   ranked.sort((a, b) => b.dynamicScore - a.dynamicScore);
 
-  const container = document.getElementById("queue-container");
-  container.innerHTML = "";
+  tbody.innerHTML = "";
+
+  // Check which intent IDs are currently in active conflicts
+  const conflictIntentIds = new Set();
+  const conflictDetails = {};
+  for (const c of cachedConflicts) {
+    conflictIntentIds.add(c.intentA);
+    conflictIntentIds.add(c.intentB);
+    conflictDetails[c.intentA] = c.conflictingFiles?.join(", ") || "overlap";
+    conflictDetails[c.intentB] = c.conflictingFiles?.join(", ") || "overlap";
+  }
 
   ranked.forEach((intent, idx) => {
     const rank = idx + 1;
-    const meta = intent.source_metadata ? JSON.parse(intent.source_metadata) : {};
+    const meta = intent.source_metadata ? (typeof intent.source_metadata === "string" ? JSON.parse(intent.source_metadata) : intent.source_metadata) : {};
 
-    let sourcePill = "";
+    let contextPill = "";
     if (meta.arrImpact) {
-      sourcePill = `<span class="card-source-badge card-source-crm">💰 +$${(meta.arrImpact / 1000).toFixed(0)}k ARR</span>`;
+      contextPill = `<span class="card-source-badge card-source-crm">💰 +$${(meta.arrImpact / 1000).toFixed(0)}k ARR</span>`;
     } else if (meta.latencyImpactMs) {
-      sourcePill = `<span class="card-source-badge card-source-telemetry">⚡ ${meta.latencyImpactMs}ms P95</span>`;
+      contextPill = `<span class="card-source-badge card-source-telemetry">⚡ ${meta.latencyImpactMs}ms P95</span>`;
     } else if (meta.cveId || meta.cveSeverity) {
-      sourcePill = `<span class="card-source-badge card-source-security">🛡️ ${meta.cveSeverity || meta.cveId}</span>`;
+      contextPill = `<span class="card-source-badge card-source-security">🛡️ ${meta.cveSeverity || meta.cveId}</span>`;
     } else {
-      sourcePill = `<span class="card-source-badge">📋 Roadmap</span>`;
+      contextPill = `<span class="card-source-badge">📋 Roadmap</span>`;
     }
 
-    const card = document.createElement("div");
-    card.className = `queue-card ${rank === 1 ? "rank-1" : ""}`;
-    card.innerHTML = `
-      <div class="card-top">
-        <div class="card-header-left">
-          <div class="rank-badge">#${rank}</div>
-          <div>
-            <div class="card-title">${intent.title}</div>
-            <div style="display: flex; gap: 8px; margin-top: 4px; align-items: center;">
-              ${sourcePill}
-              <span style="font-size: 0.72rem; color: var(--text-muted);">${intent.source_ref}</span>
-              <span style="font-size: 0.72rem; font-family: monospace; color: #a78bfa;">📦 ${intent.fork_repo_name || 'task-fork'}</span>
-            </div>
-          </div>
+    const isConflict = conflictIntentIds.has(intent.id) && intent.status !== "reconciled" && intent.status !== "merged";
+
+    let statusPill = "";
+    if (isConflict) {
+      statusPill = `<span class="status-pill status-conflict">⚠️ Collision</span>`;
+    } else if (intent.status === "reconciled") {
+      statusPill = `<span class="status-pill status-reconciled">✨ Reconciled</span>`;
+    } else if (intent.status === "merged") {
+      statusPill = `<span class="status-pill status-deployed">✓ Deployed</span>`;
+    } else {
+      statusPill = `<span class="status-pill status-ready">● Ready</span>`;
+    }
+
+    const tr = document.createElement("tr");
+    tr.className = (rank === 1 ? "rank-1" : "") + (isConflict ? " row-conflict" : "");
+    tr.title = "Click to inspect intent package details";
+
+    tr.innerHTML = `
+      <td style="text-align: center;"><span class="rank-badge-sm">#${rank}</span></td>
+      <td><span class="score-badge">${intent.dynamicScore.toFixed(1)}</span></td>
+      <td>
+        <div class="intent-cell-title">${intent.title}</div>
+        <div class="intent-meta-row">
+          ${contextPill}
+          <span style="color: var(--text-subtle);">${intent.source_ref}</span>
         </div>
-        <div class="card-score-box">
-          <div class="card-composite-label">Priority Score</div>
-          <div class="card-composite-val">${intent.dynamicScore.toFixed(1)}</div>
+      </td>
+      <td>
+        <div class="impact-pills">
+          <span class="impact-pill impact-growth" title="Growth Score">${intent.growth_score > 0 ? "+" : ""}${intent.growth_score}G</span>
+          <span class="impact-pill impact-cost" title="Cost Score">${intent.cost_score > 0 ? "+" : ""}${intent.cost_score}C</span>
+          <span class="impact-pill impact-risk" title="Risk Score">${intent.risk_score > 0 ? "+" : ""}${intent.risk_score}R</span>
         </div>
-      </div>
-      <div class="card-summary">
-        ${intent.executive_summary || intent.description}
-      </div>
-      <div class="card-footer">
-        <div class="score-bars-row">
-          <span class="score-tag score-tag-growth">Growth: <strong>${intent.growth_score > 0 ? '+' : ''}${intent.growth_score}</strong></span>
-          <span class="score-tag score-tag-cost">Cost: <strong>${intent.cost_score > 0 ? '+' : ''}${intent.cost_score}</strong></span>
-          <span class="score-tag score-tag-risk">Risk: <strong>${intent.risk_score > 0 ? '+' : ''}${intent.risk_score}</strong></span>
-        </div>
-        <div>
-          <span style="font-size: 0.75rem; text-transform: uppercase; font-weight: 700; color: ${intent.status === 'reconciled' ? 'var(--accent-purple)' : intent.status === 'merged' ? 'var(--accent-green)' : 'var(--accent-orange)'};">
-            ● ${intent.status}
-          </span>
-        </div>
-      </div>
+      </td>
+      <td><span class="repo-pill">📦 ${intent.fork_repo_name || "task-fork"}</span></td>
+      <td>${statusPill}</td>
+      <td style="text-align: center;">
+        <button class="btn-inspect" type="button">Inspect</button>
+      </td>
     `;
-    container.appendChild(card);
+
+    tr.addEventListener("click", () => openIntentModal(intent));
+    tr.querySelector(".btn-inspect").addEventListener("click", (e) => {
+      e.stopPropagation();
+      openIntentModal(intent);
+    });
+
+    tbody.appendChild(tr);
   });
 }
 
@@ -270,7 +370,6 @@ async function loadBatch() {
     document.getElementById("batch-cost").textContent = (batch.totalCostScore > 0 ? "+" : "") + batch.totalCostScore;
     document.getElementById("batch-risk").textContent = (batch.totalRiskScore > 0 ? "+" : "") + batch.totalRiskScore;
 
-    // Enable / disable deploy button
     const deployBtn = document.getElementById("btn-deploy-batch");
     if (batch.selectedIntents && batch.selectedIntents.length > 0) {
       deployBtn.disabled = false;
@@ -287,26 +386,27 @@ async function loadConflicts() {
   try {
     const res = await fetch("/api/conflicts");
     const data = await res.json();
-    const conflicts = data.conflicts || [];
+    cachedConflicts = data.conflicts || [];
 
     const container = document.getElementById("conflict-container");
-    if (!conflicts.length) {
+    if (!cachedConflicts.length) {
       container.innerHTML = `
-        <div style="font-size: 0.8rem; color: var(--accent-green); margin-top: 8px;">
-          ✓ Zero unresolved merge conflicts across top candidates.
+        <div class="resolved-box">
+          <div class="resolved-title">✓ Zero Unresolved Conflicts</div>
+          <div class="resolved-desc">All top candidates are verified clean or reconciled with zero conflict markers.</div>
         </div>
       `;
       return;
     }
 
-    const conf = conflicts[0];
+    const conf = cachedConflicts[0];
     container.innerHTML = `
       <div class="conflict-box">
         <div class="conflict-title">⚠️ Concurrency Collision Detected</div>
         <div class="conflict-desc">
-          <strong>${conf.intentA}</strong> and <strong>${conf.intentB}</strong> both touch <code>${conf.conflictingFiles.join(', ')}</code>.
+          <strong>${conf.intentA}</strong> and <strong>${conf.intentB}</strong> both touch <code>${conf.conflictingFiles.join(", ")}</code>.
         </div>
-        <button class="btn-secondary" id="btn-trigger-reconcile" style="width: 100%;">
+        <button class="btn-secondary" id="btn-trigger-reconcile" style="width: 100%; margin-top: 6px;">
           🤖 Reconcile with Agent
         </button>
       </div>
@@ -352,7 +452,7 @@ async function handleDeployBatch() {
     });
     const data = await res.json();
     if (data.success) {
-      showToast(`🚀 Deployed ${data.deployment.count} PRs successfully! (Batch ${data.deployment.batchId})`);
+      showToast(`🚀 Deployed ${data.deployment.count} PRs successfully! Ephemeral forks pruned.`);
       await refreshAll();
     }
   } catch (e) {
@@ -361,12 +461,12 @@ async function handleDeployBatch() {
 }
 
 async function handleDemoReset() {
-  showToast("Pruning Artifacts forks & resetting to baseline...");
+  showToast("Pruning Artifacts forks & resetting to evaluated baseline...");
   try {
     const res = await fetch("/api/demo/reset", { method: "POST" });
     const data = await res.json();
     if (data.success) {
-      showToast(`✓ System reset! Pruned ${data.prunedForks?.length || 0} Artifacts forks.`);
+      showToast(`✓ Demo reset! Ephemeral forks pruned & catalog initialized.`);
       await refreshAll();
     }
   } catch (e) {
@@ -374,29 +474,15 @@ async function handleDemoReset() {
   }
 }
 
-async function handleFastForward() {
-  showToast("Dispatching swarm & fast-forwarding evaluations...");
-  try {
-    const res = await fetch("/api/swarm/fast-forward", { method: "POST" });
-    const data = await res.json();
-    if (data.success) {
-      showToast(`✓ Swarm evaluated! ${data.count} forks ready for deployment.`);
-      await refreshAll();
-    }
-  } catch (e) {
-    showToast("Fast-forward error: " + e.message);
-  }
-}
-
 async function handleCustomIntentSubmit(e) {
   e.preventDefault();
-  const title = document.getElementById("input-custom-title").value;
-  const description = document.getElementById("input-custom-desc").value;
+  const title = document.getElementById("input-custom-title").value.trim();
+  const description = document.getElementById("input-custom-desc").value.trim();
   const arr = parseFloat(document.getElementById("input-custom-arr").value || 0);
 
   if (!title) return;
 
-  showToast("Strategic Evaluator Agent analyzing with Workers AI...");
+  showToast("Workers AI evaluating intent & provisioning Artifacts fork...");
   try {
     const res = await fetch("/api/evaluate-custom", {
       method: "POST",
@@ -406,16 +492,21 @@ async function handleCustomIntentSubmit(e) {
         description,
         sourceType: arr > 0 ? "crm" : "roadmap",
         sourceMetadata: { arrImpact: arr },
-        codeDiff: "// Generated feature diff"
+        codeDiff: `// Feature: ${title}\n// Description: ${description}\nexport function execute() {\n  return { success: true, timestamp: Date.now() };\n}\n`,
       }),
     });
     const data = await res.json();
     if (data.success) {
-      const ev = data.evaluation;
-      alert(`Workers AI Evaluation Result:\n\n• Growth Score: ${ev.growthScore}\n• Cost Score: ${ev.costScore}\n• Risk Score: ${ev.riskScore}\n\nSummary: ${ev.executiveSummary}`);
+      showToast(`✓ Fork ${data.forkName} created & evaluated by Workers AI!`);
       document.getElementById("input-custom-title").value = "";
       document.getElementById("input-custom-desc").value = "";
       document.getElementById("input-custom-arr").value = "";
+
+      await refreshAll();
+
+      if (data.intent) {
+        openIntentModal(data.intent);
+      }
     }
   } catch (err) {
     showToast("Evaluation error: " + err.message);
@@ -424,6 +515,7 @@ async function handleCustomIntentSubmit(e) {
 
 function showToast(message) {
   const toast = document.getElementById("toast");
+  if (!toast) return;
   toast.textContent = message;
   toast.style.display = "block";
   clearTimeout(toast.timeoutId);

@@ -11,7 +11,7 @@
       "tier": "enterprise"
     },
     "forkRepoName": "task-growth-sso",
-    "status": "pending",
+    "status": "evaluated",
     "growthScore": 92,
     "costScore": -5,
     "riskScore": 10,
@@ -32,7 +32,7 @@
       "errorRateReduction": 0.40
     },
     "forkRepoName": "task-cost-cache",
-    "status": "pending",
+    "status": "evaluated",
     "growthScore": 15,
     "costScore": 88,
     "riskScore": 25,
@@ -52,7 +52,7 @@
       "cveSeverity": "CRITICAL 9.8"
     },
     "forkRepoName": "task-risk-cve",
-    "status": "pending",
+    "status": "evaluated",
     "growthScore": -5,
     "costScore": 0,
     "riskScore": 96,
@@ -72,7 +72,7 @@
       "tier": "enterprise"
     },
     "forkRepoName": "task-growth-stripe",
-    "status": "pending",
+    "status": "evaluated",
     "growthScore": 85,
     "costScore": -10,
     "riskScore": 15,
@@ -92,7 +92,7 @@
       "errorRateReduction": 0.20
     },
     "forkRepoName": "task-cost-db-batch",
-    "status": "pending",
+    "status": "evaluated",
     "growthScore": 5,
     "costScore": 79,
     "riskScore": 30,
@@ -111,7 +111,7 @@
       "cveSeverity": "HIGH"
     },
     "forkRepoName": "task-risk-ratelimit",
-    "status": "pending",
+    "status": "evaluated",
     "growthScore": -5,
     "costScore": 10,
     "riskScore": 84,
@@ -132,7 +132,7 @@
       "tier": "enterprise"
     },
     "forkRepoName": "task-growth-audit",
-    "status": "pending",
+    "status": "evaluated",
     "growthScore": 89,
     "costScore": -15,
     "riskScore": 40,
@@ -151,7 +151,7 @@
       "latencyImpactMs": -60
     },
     "forkRepoName": "task-cost-compression",
-    "status": "pending",
+    "status": "evaluated",
     "growthScore": 10,
     "costScore": 72,
     "riskScore": 20,
@@ -170,7 +170,7 @@
       "cveSeverity": "HIGH"
     },
     "forkRepoName": "task-risk-sanitize",
-    "status": "pending",
+    "status": "evaluated",
     "growthScore": 0,
     "costScore": -5,
     "riskScore": 91,
@@ -190,7 +190,7 @@
       "tier": "growth"
     },
     "forkRepoName": "task-growth-csv",
-    "status": "pending",
+    "status": "evaluated",
     "growthScore": 68,
     "costScore": -5,
     "riskScore": 15,

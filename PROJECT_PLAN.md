@@ -162,11 +162,12 @@ To guarantee flawless demo rehearsals, video takes, and live presentations:
 - [x] Implement demo fast-forward (`/api/swarm/fast-forward`) and 1-click clean reset (`/api/demo/reset`) that prunes Artifacts forks.
 - [x] Deploy and verify dynamic real-time re-ranking across Growth, Cost, and Risk strategic postures.
 
-### Phase 3: Strategic Evaluation Engine
-- [ ] Set up the evaluation pipeline triggered on fork pushes.
-- [ ] Implement Workers AI prompt analyzing Intent metadata + code diffs.
-- [ ] Generate structured scores (`growth`, `cost`, `risk`) and an executive summary.
-- [ ] Commit `EVALUATION.json` into the Artifacts fork to ensure immutable context preservation.
+### Phase 3: Strategic Evaluation Engine (COMPLETED)
+- [x] Set up evaluation pipeline with Cloudflare Workers AI (`@cf/meta/llama-3.3-70b-instruct`) in `src/evaluator.ts`.
+- [x] Implement prompt analyzing Intent metadata (ARR impact, CVEs, latency) + code diffs.
+- [x] Generate structured scores (`growth`, `cost`, `risk`), 3-dimension rationale, and executive summary.
+- [x] Integrate evaluation endpoints (`/api/intents/evaluate` and `/api/evaluate-custom`) to support both cataloged and on-the-fly custom intent evaluation.
+- [x] Verify live Cloudflare execution and score persistence in D1.
 
 ### Phase 4: Dynamic Re-ranking & Conflict Reconciliation Agent
 - [ ] Implement the live scoring and sorting algorithm in Workers.

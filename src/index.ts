@@ -1,6 +1,8 @@
 import { Env, StrategicWeights } from "./types";
 import { ArtifactsService } from "./artifacts";
 import { SwarmDispatcher } from "./dispatcher";
+import { StrategicEvaluator } from "./evaluator";
+import seedData from "../seed.json";
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -137,6 +139,91 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
       const dispatcher = new SwarmDispatcher(env);
       const res = await dispatcher.fastForwardEvaluated();
       return json({ success: true, count: res.count, message: "Swarm fast-forwarded to evaluated state" });
+    } catch (err: any) {
+      return json({ error: err.message }, 500);
+    }
+  }
+
+  // Strategic Evaluation with Workers AI for an Intent
+  if (url.pathname === "/api/intents/evaluate" && request.method === "POST") {
+    try {
+      const body = await request.json() as { intentId: string };
+      const intent = await env.DB.prepare("SELECT * FROM intents WHERE id = ?").bind(body.intentId).first<any>();
+      if (!intent) return json({ error: "Intent not found" }, 404);
+
+      // Find code diff from seed catalog
+      const seedItem = (seedData as any[]).find((s) => s.id === body.intentId);
+      const diffString = seedItem?.files ? JSON.stringify(seedItem.files, null, 2) : "// Modified endpoints";
+
+      const evaluator = new StrategicEvaluator(env);
+      const metadata = intent.source_metadata ? JSON.parse(intent.source_metadata) : {};
+      const evalResult = await evaluator.evaluateIntent(
+        intent.title,
+        intent.description || "",
+        intent.source_type,
+        metadata,
+        diffString
+      );
+
+      // Get current weights to compute composite score
+      const weightRow = await env.DB.prepare("SELECT growth_weight, cost_weight, risk_weight FROM strategic_weights WHERE id = 1").first<any>();
+      const w = weightRow || { growth_weight: 0.5, cost_weight: 0.25, risk_weight: 0.25 };
+      const composite = (evalResult.growthScore * w.growth_weight) +
+                        (evalResult.costScore * w.cost_weight) +
+                        (evalResult.riskScore * w.risk_weight);
+
+      // Persist in D1
+      await env.DB.prepare(`
+        UPDATE intents 
+        SET status = 'evaluated',
+            growth_score = ?,
+            cost_score = ?,
+            risk_score = ?,
+            composite_score = ?,
+            executive_summary = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).bind(
+        evalResult.growthScore,
+        evalResult.costScore,
+        evalResult.riskScore,
+        composite,
+        evalResult.executiveSummary,
+        body.intentId
+      ).run();
+
+      return json({
+        success: true,
+        intentId: body.intentId,
+        evaluation: evalResult,
+        compositeScore: composite,
+      });
+    } catch (err: any) {
+      return json({ error: err.message }, 500);
+    }
+  }
+
+  // Custom Live Evaluation Endpoint
+  if (url.pathname === "/api/evaluate-custom" && request.method === "POST") {
+    try {
+      const body = await request.json() as {
+        title: string;
+        description: string;
+        sourceType?: string;
+        sourceMetadata?: any;
+        codeDiff?: string;
+      };
+
+      const evaluator = new StrategicEvaluator(env);
+      const evalResult = await evaluator.evaluateIntent(
+        body.title || "Custom Change",
+        body.description || "",
+        body.sourceType || "roadmap",
+        body.sourceMetadata || {},
+        body.codeDiff || "// custom changes"
+      );
+
+      return json({ success: true, evaluation: evalResult });
     } catch (err: any) {
       return json({ error: err.message }, 500);
     }

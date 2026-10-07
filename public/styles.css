@@ -544,14 +544,14 @@ input[type="range"]::-webkit-slider-thumb {
 
 .dispatch-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 0.78rem;
   text-align: left;
 }
 
 .dispatch-table thead {
   background-color: var(--bg-control);
-  border-bottom: 1px solid var(--border-line);
 }
 
 .dispatch-table th {
@@ -562,34 +562,52 @@ input[type="range"]::-webkit-slider-thumb {
   letter-spacing: 0.04em;
   color: var(--text-subtle);
   white-space: nowrap;
+  border-bottom: 1px solid var(--border-line);
 }
 
 .dispatch-table tbody tr {
+  cursor: pointer;
+  position: relative;
+}
+
+.dispatch-table tbody tr td {
+  padding: 8px 12px;
+  vertical-align: middle;
   border-bottom: 1px solid var(--border-line);
   transition: background-color 0.12s ease;
-  cursor: pointer;
 }
 
-.dispatch-table tbody tr:last-child {
-  border-bottom: none;
+.dispatch-table tbody tr td:first-child {
+  border-left: 3px solid transparent;
+  transition: border-color 0.15s ease;
 }
 
-.dispatch-table tbody tr:hover {
+.dispatch-table tbody tr:hover td {
   background-color: var(--bg-card-hover);
 }
 
-.dispatch-table tbody tr.row-conflict {
+.dispatch-table tbody tr.row-in-batch td {
+  background-color: rgba(243, 128, 32, 0.035);
+}
+
+.dispatch-table tbody tr.row-in-batch:hover td {
+  background-color: rgba(243, 128, 32, 0.07);
+}
+
+.dispatch-table tbody tr.row-in-batch td:first-child {
+  border-left: 3px solid var(--brand-orange);
+}
+
+.dispatch-table tbody tr.row-conflict td {
   background-color: rgba(245, 158, 11, 0.05);
+}
+
+.dispatch-table tbody tr.row-conflict td:first-child {
   border-left: 3px solid var(--signal-warning);
 }
 
-.dispatch-table tbody tr.rank-1 {
+.dispatch-table tbody tr.rank-1 td {
   background-color: rgba(249, 115, 22, 0.03);
-}
-
-.dispatch-table td {
-  padding: 9px 12px;
-  vertical-align: middle;
 }
 
 .rank-badge-sm {
@@ -613,6 +631,111 @@ input[type="range"]::-webkit-slider-thumb {
 
 .rank-1 .score-badge {
   color: var(--brand-orange);
+}
+
+/* Minimalist DAG File-Tree Layout */
+.tree-node-cell {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.tree-branch-prefix {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8rem;
+  color: #71717a;
+  user-select: none;
+  line-height: 1.35;
+  letter-spacing: -0.05em;
+  padding-top: 1px;
+  white-space: pre;
+  font-weight: 500;
+}
+
+.tree-node-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.tree-tag {
+  font-size: 0.62rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.tree-tag-root {
+  background-color: rgba(59, 130, 246, 0.08);
+  color: var(--signal-info);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+}
+
+.tree-tag-dep {
+  background-color: rgba(245, 158, 11, 0.08);
+  color: var(--signal-warning);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.tree-tag-merged {
+  background-color: rgba(16, 185, 129, 0.08);
+  color: var(--signal-success);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.rank-badge-child {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 600;
+  font-size: 0.72rem;
+  color: var(--text-subtle);
+  opacity: 0.85;
+}
+
+/* Candidate Release Batch Visual Badges */
+.status-cell-flex {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.batch-pill {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background-color: rgba(243, 128, 32, 0.12);
+  color: var(--brand-orange);
+  border: 1px solid rgba(243, 128, 32, 0.4);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.batch-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: var(--brand-orange);
+  box-shadow: 0 0 6px rgba(243, 128, 32, 0.8);
+  display: inline-block;
+}
+
+.batch-helper-badge {
+  font-size: 0.68rem;
+  color: var(--brand-orange);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 600;
+  margin-top: 6px;
 }
 
 .intent-cell-title {

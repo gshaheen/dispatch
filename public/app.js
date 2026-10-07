@@ -3,7 +3,9 @@
 let activeWeights = { growth: 0.5, cost: 0.25, risk: 0.25 };
 let cachedIntents = [];
 let cachedConflicts = [];
+let cachedBatchIntentIds = new Set();
 let updateTimeout = null;
+let sliderRaf = null;
 
 document.addEventListener("DOMContentLoaded", () => {
   initTheme();
@@ -291,6 +293,14 @@ function setupEventListeners() {
   document.getElementById("form-custom-intent").addEventListener("submit", handleCustomIntentSubmit);
 }
 
+function scheduleQueueRender() {
+  if (sliderRaf) return;
+  sliderRaf = requestAnimationFrame(() => {
+    recalculateAndRenderQueue();
+    sliderRaf = null;
+  });
+}
+
 function onSliderChange(changedType, newValue) {
   const types = ["growth", "cost", "risk"];
   const others = types.filter((t) => t !== changedType);
@@ -309,7 +319,7 @@ function onSliderChange(changedType, newValue) {
 
   localStorage.setItem("dispatch-weights", JSON.stringify(activeWeights));
   updateSliderUI();
-  recalculateAndRenderQueue();
+  scheduleQueueRender();
 
   clearTimeout(updateTimeout);
   updateTimeout = setTimeout(() => {
@@ -531,7 +541,103 @@ async function loadIntents() {
   }
 }
 
-function recalculateAndRenderQueue() {
+function computeClientBatchIds(scoredCandidates, limit = 5) {
+  const eligible = scoredCandidates.filter((i) => i.status !== "merged");
+  const selected = [];
+  const selectedIds = new Set();
+
+  const conflictPairs = new Set();
+  for (const c of cachedConflicts) {
+    if (c.status !== "resolved") {
+      conflictPairs.add(`${c.intentA}:${c.intentB}`);
+      conflictPairs.add(`${c.intentB}:${c.intentA}`);
+    }
+  }
+
+  const mergedIds = new Set(cachedIntents.filter((i) => i.status === "merged").map((i) => i.id));
+  const intentMap = new Map();
+  cachedIntents.forEach((i) => intentMap.set(i.id, i));
+
+  // Sort candidates by dynamicScore descending
+  const sortedCandidates = [...eligible].sort((a, b) => b.dynamicScore - a.dynamicScore);
+
+  for (const item of sortedCandidates) {
+    if (selected.length >= limit) break;
+    if (selectedIds.has(item.id)) continue;
+
+    // Topological DAG check
+    const deps = item.dependsOn || [];
+    let blocked = false;
+
+    for (const depId of deps) {
+      const isMerged = mergedIds.has(depId);
+      const isSelected = selectedIds.has(depId);
+      if (!isMerged && !isSelected) {
+        // Can we bring depId into batch?
+        const depCandidate = intentMap.get(depId);
+        if (depCandidate && selected.length + 1 <= limit) {
+          let depConflicts = false;
+          for (const existing of selected) {
+            if (conflictPairs.has(`${existing.id}:${depCandidate.id}`)) {
+              depConflicts = true;
+              break;
+            }
+          }
+          if (!depConflicts) {
+            selected.push(depCandidate);
+            selectedIds.add(depCandidate.id);
+            continue;
+          }
+        }
+        blocked = true;
+        break;
+      }
+    }
+
+    if (blocked) continue;
+
+    // Check conflict with already selected
+    let hasConflict = false;
+    for (const s of selected) {
+      if (conflictPairs.has(`${s.id}:${item.id}`)) {
+        hasConflict = true;
+        break;
+      }
+    }
+
+    if (!hasConflict) {
+      selected.push(item);
+      selectedIds.add(item.id);
+    }
+  }
+
+  return selectedIds;
+}
+
+function updateBatchMetricsUI(selectedIds, scoredList) {
+  const batchItems = scoredList.filter((i) => selectedIds.has(i.id));
+  let totalG = 0, totalC = 0, totalR = 0;
+  for (const b of batchItems) {
+    totalG += b.growth_score || 0;
+    totalC += b.cost_score || 0;
+    totalR += b.risk_score || 0;
+  }
+  const countEl = document.getElementById("batch-count");
+  if (countEl) countEl.textContent = batchItems.length;
+  const gEl = document.getElementById("batch-growth");
+  if (gEl) gEl.textContent = (totalG > 0 ? "+" : "") + totalG;
+  const cEl = document.getElementById("batch-cost");
+  if (cEl) cEl.textContent = (totalC > 0 ? "+" : "") + totalC;
+  const rEl = document.getElementById("batch-risk");
+  if (rEl) rEl.textContent = (totalR > 0 ? "+" : "") + totalR;
+  const deployBtn = document.getElementById("btn-deploy-batch");
+  if (deployBtn) {
+    deployBtn.disabled = batchItems.length === 0;
+    deployBtn.dataset.intentIds = JSON.stringify(batchItems.map((i) => i.id));
+  }
+}
+
+function recalculateAndRenderQueue(recomputeBatch = true) {
   const tbody = document.getElementById("queue-tbody");
   if (!tbody) return;
 
@@ -546,17 +652,108 @@ function recalculateAndRenderQueue() {
     return;
   }
 
-  // Recalculate dynamic scores client-side
-  const ranked = cachedIntents.map((intent) => {
+  // 1. Recalculate dynamic scores & parse dependency arrays
+  const scored = cachedIntents.map((intent) => {
     const score = (intent.growth_score * activeWeights.growth) +
                   (intent.cost_score * activeWeights.cost) +
                   (intent.risk_score * activeWeights.risk);
-    return { ...intent, dynamicScore: Math.round(score * 10) / 10 };
+    const rawDeps = intent.dependsOn || intent.depends_on;
+    const dependsOn = rawDeps ? (typeof rawDeps === "string" ? JSON.parse(rawDeps) : rawDeps) : [];
+    return {
+      ...intent,
+      dependsOn,
+      dynamicScore: Math.round(score * 10) / 10
+    };
   });
 
-  ranked.sort((a, b) => b.dynamicScore - a.dynamicScore);
+  // Calculate client-side batch selection for real-time responsiveness during slider drag
+  if (recomputeBatch || !cachedBatchIntentIds || cachedBatchIntentIds.size === 0) {
+    cachedBatchIntentIds = computeClientBatchIds(scored);
+  }
+  updateBatchMetricsUI(cachedBatchIntentIds, scored);
 
-  tbody.innerHTML = "";
+  // 2. Build Topological DAG Dependency Graph & Tree Clusters
+  const intentMap = new Map();
+  scored.forEach((i) => intentMap.set(i.id, i));
+
+  const childrenMap = new Map();
+  const roots = [];
+
+  scored.forEach((intent) => {
+    const deps = intent.dependsOn || [];
+    // Check if prerequisite exists in active catalog and is not yet merged
+    const parentId = deps.find((d) => intentMap.has(d));
+    if (parentId) {
+      if (!childrenMap.has(parentId)) childrenMap.set(parentId, []);
+      childrenMap.get(parentId).push(intent);
+    } else {
+      roots.push(intent);
+    }
+  });
+
+  // Calculate max cluster score for each root tree
+  function getClusterMaxScore(node) {
+    let max = node.dynamicScore;
+    const kids = childrenMap.get(node.id) || [];
+    for (const k of kids) {
+      max = Math.max(max, getClusterMaxScore(k));
+    }
+    return max;
+  }
+
+  roots.forEach((r) => {
+    r.clusterScore = getClusterMaxScore(r);
+  });
+
+  // Sort root clusters descending by cluster score, then root dynamic score
+  roots.sort((a, b) => (b.clusterScore - a.clusterScore) || (b.dynamicScore - a.dynamicScore));
+
+  // Flatten tree into file-tree hierarchy with indentation & tree branch lines
+  const flatQueue = [];
+  let rootIdx = 1;
+
+  roots.forEach((root) => {
+    const clusterRank = rootIdx++;
+    let childCounter = 1;
+
+    function traverse(node, depth, isLastArray, rankDisplay, parentNode) {
+      const kids = childrenMap.get(node.id) || [];
+      kids.sort((a, b) => b.dynamicScore - a.dynamicScore);
+
+      let treePrefix = "";
+      if (depth > 0) {
+        for (let i = 0; i < depth - 1; i++) {
+          treePrefix += isLastArray[i] ? "    " : "│   ";
+        }
+        treePrefix += isLastArray[depth - 1] ? "└── " : "├── ";
+      }
+
+      flatQueue.push({
+        ...node,
+        treeDepth: depth,
+        treePrefix,
+        hasChildren: kids.length > 0,
+        isRoot: depth === 0,
+        parentIntent: parentNode,
+        rankDisplay
+      });
+
+      kids.forEach((k, idx) => {
+        const isLast = idx === kids.length - 1;
+        const childRank = `${clusterRank}.${childCounter++}`;
+        traverse(k, depth + 1, [...isLastArray, isLast], childRank, node);
+      });
+    }
+
+    traverse(root, 0, [], `#${clusterRank}`, null);
+  });
+
+  // 3. FLIP Animation: Record Initial Row Offsets
+  const prevTops = new Map();
+  const existingRows = tbody.querySelectorAll("tr[data-intent-id]");
+  for (const r of existingRows) {
+    prevTops.set(r.dataset.intentId, r.getBoundingClientRect().top);
+  }
 
   const conflictIntentIds = new Set();
   for (const c of cachedConflicts) {
@@ -564,8 +761,14 @@ function recalculateAndRenderQueue() {
     conflictIntentIds.add(c.intentB);
   }
 
-  ranked.forEach((intent, idx) => {
-    const rank = idx + 1;
+  // 4. Update or Create DOM Rows
+  const fragment = document.createDocumentFragment();
+  const rowMap = new Map();
+  for (const r of existingRows) {
+    rowMap.set(r.dataset.intentId, r);
+  }
+
+  flatQueue.forEach((intent) => {
     const meta = intent.source_metadata ? (typeof intent.source_metadata === "string" ? JSON.parse(intent.source_metadata) : intent.source_metadata) : {};
 
     let contextPill = "";
@@ -579,21 +782,24 @@ function recalculateAndRenderQueue() {
       contextPill = `<span class="card-source-badge">Roadmap</span>`;
     }
 
-    let dagPill = "";
-    if (intent.dependsOn && intent.dependsOn.length > 0) {
-      const depId = intent.dependsOn[0];
-      const depItem = cachedIntents.find((i) => i.id === depId);
-      const isDepMerged = depItem && depItem.status === "merged";
-      if (isDepMerged) {
-        dagPill = `<span class="dag-badge dag-badge-merged" title="Prerequisite merged in baseline">✓ ${depId.replace('intent-', '')}</span>`;
-      } else {
-        dagPill = `<span class="dag-badge dag-badge-pending" title="Prerequisite unmerged / required">⏳ ${depId.replace('intent-', '')}</span>`;
+    // Minimalist DAG tree tag
+    let dagTag = "";
+    if (intent.isRoot) {
+      if (intent.hasChildren) {
+        dagTag = `<span class="tree-tag tree-tag-root" title="Architectural root prerequisite for downstream features">DAG ROOT</span>`;
       }
     } else {
-      dagPill = `<span class="dag-badge dag-badge-root" title="Root architectural package">root</span>`;
+      const pId = intent.parentIntent ? intent.parentIntent.id.replace("intent-", "") : "prereq";
+      const isMerged = intent.parentIntent && intent.parentIntent.status === "merged";
+      if (isMerged) {
+        dagTag = `<span class="tree-tag tree-tag-merged" title="Prerequisite merged into baseline">✓ ${pId}</span>`;
+      } else {
+        dagTag = `<span class="tree-tag tree-tag-dep" title="Requires ${pId} to merge first">↳ REQUIRES: ${pId}</span>`;
+      }
     }
 
     const isConflict = conflictIntentIds.has(intent.id) && intent.status !== "reconciled" && intent.status !== "merged";
+    const isInBatch = cachedBatchIntentIds.has(intent.id);
 
     let statusPill = "";
     if (isConflict) {
@@ -606,18 +812,45 @@ function recalculateAndRenderQueue() {
       statusPill = `<span class="status-pill status-ready">READY</span>`;
     }
 
-    const tr = document.createElement("tr");
-    tr.className = (rank === 1 ? "rank-1" : "") + (isConflict ? " row-conflict" : "");
+    const batchPillHtml = isInBatch
+      ? `<span class="batch-pill" title="Included in Candidate Release Batch"><span class="batch-dot"></span>IN BATCH</span>`
+      : "";
+
+    let tr = rowMap.get(intent.id);
+    if (!tr) {
+      tr = document.createElement("tr");
+      tr.dataset.intentId = intent.id;
+      tr.addEventListener("click", () => {
+        const cur = cachedIntents.find((i) => i.id === intent.id);
+        if (cur) openIntentModal(cur);
+      });
+    }
+
+    const classes = [];
+    if (intent.rankDisplay === "#1") classes.push("rank-1");
+    if (isConflict) classes.push("row-conflict");
+    if (isInBatch) classes.push("row-in-batch");
+    if (!intent.isRoot) classes.push("row-tree-child");
+    tr.className = classes.join(" ");
+
+    const rankBadge = intent.isRoot
+      ? `<span class="rank-badge-sm">${intent.rankDisplay}</span>`
+      : `<span class="rank-badge-child">${intent.rankDisplay}</span>`;
 
     tr.innerHTML = `
-      <td style="text-align: center;"><span class="rank-badge-sm">#${rank}</span></td>
+      <td style="text-align: center;">${rankBadge}</td>
       <td><span class="score-badge">${intent.dynamicScore.toFixed(1)}</span></td>
       <td>
-        <div class="intent-cell-title">${intent.title}</div>
-        <div class="intent-meta-row">
-          ${contextPill}
-          ${dagPill}
-          <span style="color: var(--text-subtle);">${intent.source_ref}</span>
+        <div class="tree-node-cell">
+          ${intent.treePrefix ? `<span class="tree-branch-prefix">${intent.treePrefix}</span>` : ""}
+          <div class="tree-node-body">
+            <div class="intent-cell-title">${intent.title}</div>
+            <div class="intent-meta-row">
+              ${dagTag}
+              ${contextPill}
+              <span style="color: var(--text-subtle);">${intent.source_ref}</span>
+            </div>
+          </div>
         </div>
       </td>
       <td>
@@ -628,20 +861,74 @@ function recalculateAndRenderQueue() {
         </div>
       </td>
       <td><span class="repo-pill">${intent.fork_repo_name || "task-fork"}</span></td>
-      <td>${statusPill}</td>
+      <td>
+        <div class="status-cell-flex">
+          ${batchPillHtml}
+          ${statusPill}
+        </div>
+      </td>
       <td style="text-align: center;">
         <button class="btn-inspect" type="button">Inspect</button>
       </td>
     `;
 
-    tr.addEventListener("click", () => openIntentModal(intent));
-    tr.querySelector(".btn-inspect").addEventListener("click", (e) => {
-      e.stopPropagation();
-      openIntentModal(intent);
-    });
+    const inspectBtn = tr.querySelector(".btn-inspect");
+    if (inspectBtn) {
+      inspectBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const cur = cachedIntents.find((i) => i.id === intent.id);
+        if (cur) openIntentModal(cur);
+      });
+    }
 
-    tbody.appendChild(tr);
+    fragment.appendChild(tr);
   });
+
+  tbody.innerHTML = "";
+  tbody.appendChild(fragment);
+
+  // 5. FLIP Animation: Invert & Play
+  if (prevTops.size > 0) {
+    const moves = [];
+    for (const tr of tbody.querySelectorAll("tr[data-intent-id]")) {
+      const id = tr.dataset.intentId;
+      const oldTop = prevTops.get(id);
+      if (oldTop !== undefined) {
+        const newTop = tr.getBoundingClientRect().top;
+        const deltaY = oldTop - newTop;
+        if (Math.abs(deltaY) > 0.5) {
+          moves.push({ tr, deltaY });
+        }
+      }
+    }
+
+    if (moves.length > 0) {
+      for (const { tr, deltaY } of moves) {
+        tr.style.transition = "none";
+        tr.style.transform = `translateY(${deltaY}px)`;
+        tr.style.willChange = "transform";
+        tr.style.zIndex = "2";
+      }
+
+      // Force layout reflow
+      void tbody.offsetHeight;
+
+      requestAnimationFrame(() => {
+        for (const { tr } of moves) {
+          tr.style.transition = "transform 340ms cubic-bezier(0.16, 1, 0.3, 1)";
+          tr.style.transform = "";
+        }
+        setTimeout(() => {
+          for (const { tr } of moves) {
+            tr.style.transition = "";
+            tr.style.transform = "";
+            tr.style.willChange = "";
+            tr.style.zIndex = "";
+          }
+        }, 360);
+      });
+    }
+  }
 }
 
 async function loadBatch() {
@@ -650,6 +937,10 @@ async function loadBatch() {
     const data = await res.json();
     const batch = data.batch;
     if (!batch) return;
+
+    if (batch.selectedIntents) {
+      cachedBatchIntentIds = new Set(batch.selectedIntents.map((i) => i.id));
+    }
 
     document.getElementById("batch-count").textContent = batch.selectedIntents?.length || 0;
     document.getElementById("batch-growth").textContent = (batch.totalGrowthScore > 0 ? "+" : "") + batch.totalGrowthScore;
@@ -669,6 +960,9 @@ async function loadBatch() {
         logTerminal("RANKER", `Topological DAG Guard: ${w.intentId} deferred (${w.message})`, "ranker");
       }
     }
+
+    // Refresh queue with server-confirmed batch
+    recalculateAndRenderQueue(false);
   } catch (e) {
     console.error("Failed to load batch:", e);
   }

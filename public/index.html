@@ -3,14 +3,195 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dispatch: The Strategic Git Platform</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0b0f19; color: #f3f4f6; margin: 0; padding: 40px; }
-    h1 { color: #f97316; font-size: 2.2rem; }
-  </style>
+  <title>Dispatch — The Strategic Git Platform</title>
+  <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <h1>Dispatch</h1>
-  <p>The Strategic Git Platform for the Agentic Era.</p>
+
+  <!-- Top Executive Bar -->
+  <header class="header">
+    <div class="brand">
+      <div class="logo-flame">🍊</div>
+      <div class="title-container">
+        <h1>
+          DISPATCH
+          <span class="title-badge">Agentic Git</span>
+        </h1>
+        <div class="tagline">The Strategic Git Platform for the Post-Scarcity Era</div>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <div class="status-pills">
+        <span><span class="pill-dot"></span>Workers</span>
+        <span><span class="pill-dot"></span>Artifacts</span>
+        <span><span class="pill-dot"></span>D1 DB</span>
+        <span><span class="pill-dot"></span>Workers AI</span>
+      </div>
+
+      <div style="display: flex; gap: 8px;">
+        <button class="btn-secondary" id="btn-demo-fastforward">⚡ Swarm Ready</button>
+        <button class="btn-secondary" id="btn-demo-reset" style="border-color: rgba(239, 68, 68, 0.4); color: #fca5a5;">🔄 Reset Demo</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="container">
+
+    <!-- 1. Strategic Priority Dials -->
+    <section class="strategy-panel">
+      <div class="strategy-header">
+        <div class="strategy-title">
+          <span>🎯</span>
+          <span>Executive Strategic Dials</span>
+          <span style="font-size: 0.8rem; font-weight: normal; color: var(--text-muted); margin-left: 8px;">
+            (Dynamically shifts deployment queue priorities in real time)
+          </span>
+        </div>
+        <div class="strategy-presets">
+          <button class="preset-btn active" id="btn-preset-balanced">⚖️ Balanced</button>
+          <button class="preset-btn" id="btn-preset-growth">🚀 Growth Focus</button>
+          <button class="preset-btn" id="btn-preset-cost">⚡ Cost Reduction</button>
+          <button class="preset-btn" id="btn-preset-risk">🛡️ Security Freeze</button>
+        </div>
+      </div>
+
+      <div class="sliders-grid">
+        <!-- Growth Dial -->
+        <div class="slider-card slider-growth">
+          <div class="slider-label-row">
+            <span class="slider-name">🚀 Revenue & Growth</span>
+            <span class="slider-val" id="val-growth">50%</span>
+          </div>
+          <input type="range" id="slider-growth" min="0" max="1" step="0.05" value="0.50">
+        </div>
+
+        <!-- Cost Dial -->
+        <div class="slider-card slider-cost">
+          <div class="slider-label-row">
+            <span class="slider-name">⚡ Cost & Efficiency</span>
+            <span class="slider-val" id="val-cost">25%</span>
+          </div>
+          <input type="range" id="slider-cost" min="0" max="1" step="0.05" value="0.25">
+        </div>
+
+        <!-- Risk Dial -->
+        <div class="slider-card slider-risk">
+          <div class="slider-label-row">
+            <span class="slider-name">🛡️ Risk & Security</span>
+            <span class="slider-val" id="val-risk">25%</span>
+          </div>
+          <input type="range" id="slider-risk" min="0" max="1" step="0.05" value="0.25">
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Main Two Column Layout -->
+    <div class="main-grid">
+
+      <!-- Left Column: The Live Deployment Queue -->
+      <div>
+        <div class="section-header">
+          <div>
+            <div class="section-title">
+              <span>📋</span>
+              <span>Dynamic Deployment Queue</span>
+            </div>
+            <div class="section-subtitle">
+              Prioritized by: <code>Score = w_growth · S_g + w_cost · S_c + w_risk · S_r</code>
+            </div>
+          </div>
+        </div>
+
+        <div class="queue-list" id="queue-container">
+          <!-- Populated by app.js -->
+        </div>
+      </div>
+
+      <!-- Right Column: Control Panels -->
+      <div class="right-column">
+
+        <!-- Candidate Release Batch Panel -->
+        <div class="panel-card">
+          <div class="section-title" style="margin-bottom: 6px;">
+            <span>📦</span>
+            <span>Candidate Release Batch</span>
+          </div>
+          <div class="section-subtitle">
+            Optimal composition of non-conflicting forks ready for production.
+          </div>
+
+          <div class="batch-metric-grid">
+            <div class="metric-box">
+              <div class="metric-label">PRs in Batch</div>
+              <div class="metric-val orange" id="batch-count">0</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-label">Growth Impact</div>
+              <div class="metric-val green" id="batch-growth">+0</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-label">Cost Efficiency</div>
+              <div class="metric-val blue" id="batch-cost">+0</div>
+            </div>
+            <div class="metric-box">
+              <div class="metric-label">Risk Reduction</div>
+              <div class="metric-val red" id="batch-risk">+0</div>
+            </div>
+          </div>
+
+          <button class="btn-primary" id="btn-deploy-batch" disabled>
+            🚀 Deploy Strategic Batch
+          </button>
+        </div>
+
+        <!-- Concurrency & Conflict Matrix -->
+        <div class="panel-card">
+          <div class="section-title" style="margin-bottom: 6px;">
+            <span>⚔️</span>
+            <span>Concurrency & Conflicts</span>
+          </div>
+          <div class="section-subtitle">
+            Autonomous multi-agent overlap & semantic reconciliation.
+          </div>
+
+          <div id="conflict-container">
+            <!-- Populated by app.js -->
+          </div>
+        </div>
+
+        <!-- Interactive Spec Box -->
+        <div class="panel-card">
+          <div class="section-title" style="margin-bottom: 6px;">
+            <span>✨</span>
+            <span>Dispatch Custom Spec</span>
+          </div>
+          <div class="section-subtitle">
+            Evaluate a new business intent with Workers AI live.
+          </div>
+
+          <form id="form-custom-intent" style="margin-top: 14px; display: flex; flex-direction: column; gap: 10px;">
+            <input type="text" id="input-custom-title" placeholder="Feature Title (e.g. Add Apple Pay)" 
+                   style="background: #1f293d; border: 1px solid var(--border); padding: 8px 12px; border-radius: 6px; color: #fff; font-size: 0.85rem;" required>
+            <input type="text" id="input-custom-desc" placeholder="Technical Description" 
+                   style="background: #1f293d; border: 1px solid var(--border); padding: 8px 12px; border-radius: 6px; color: #fff; font-size: 0.85rem;">
+            <input type="number" id="input-custom-arr" placeholder="ARR on line ($)" 
+                   style="background: #1f293d; border: 1px solid var(--border); padding: 8px 12px; border-radius: 6px; color: #fff; font-size: 0.85rem;">
+            <button type="submit" class="btn-secondary" style="width: 100%; margin-top: 4px;">
+              ⚡ Evaluate with Workers AI
+            </button>
+          </form>
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="toast" id="toast"></div>
+
+  <script src="/app.js"></script>
 </body>
 </html>

@@ -75,7 +75,7 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
   if (request.method === "POST" && url.pathname.startsWith("/api/")) {
     if (accessKeyHeader !== expectedKey) {
       return json({
-        error: "Demo Access Key Required: Mutation operations (Workers AI evaluation, conflict reconciliation, batch deployment, reset) require authorization. Provide key via URL (?access=cf-dispatch-2026) or in the header.",
+        error: "Demo Access Key Required: Mutation operations (Workers AI evaluation, conflict reconciliation, batch deployment, reset) require authorization. Provide the access key via URL parameter (?access=...) or in the x-dispatch-access-key header.",
         code: "UNAUTHORIZED_DEMO_MUTATION"
       }, 401);
     }

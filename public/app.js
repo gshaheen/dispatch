@@ -406,7 +406,7 @@ function initPasscodeModal() {
           showToast("Access unlocked! Mutations & AI inference enabled.");
           logTerminal("WORKER", "Demo mutation key verified and authorized", "worker");
         } else {
-          showToast("Invalid access key. Use 'cf-dispatch-2026' or check your key.");
+          showToast("Invalid access key. Please verify your demo credentials.");
           logTerminal("WORKER", "Demo authorization rejected: invalid key", "reset");
         }
       } catch (err) {

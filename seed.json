@@ -11,6 +11,9 @@
       "tier": "enterprise"
     },
     "forkRepoName": "task-growth-sso",
+    "commitSha": "7a8f3b2",
+    "parentSha": "b92e104",
+    "dependsOn": [],
     "status": "evaluated",
     "growthScore": 92,
     "costScore": -5,
@@ -32,6 +35,9 @@
       "errorRateReduction": 0.40
     },
     "forkRepoName": "task-cost-cache",
+    "commitSha": "4d91e0a",
+    "parentSha": "b92e104",
+    "dependsOn": [],
     "status": "evaluated",
     "growthScore": 15,
     "costScore": 88,
@@ -52,6 +58,9 @@
       "cveSeverity": "CRITICAL 9.8"
     },
     "forkRepoName": "task-risk-cve",
+    "commitSha": "f10c84e",
+    "parentSha": "b92e104",
+    "dependsOn": [],
     "status": "evaluated",
     "growthScore": -5,
     "costScore": 0,
@@ -72,6 +81,9 @@
       "tier": "enterprise"
     },
     "forkRepoName": "task-growth-stripe",
+    "commitSha": "38b2a1c",
+    "parentSha": "b92e104",
+    "dependsOn": [],
     "status": "evaluated",
     "growthScore": 85,
     "costScore": -10,
@@ -92,6 +104,9 @@
       "errorRateReduction": 0.20
     },
     "forkRepoName": "task-cost-db-batch",
+    "commitSha": "e629f5d",
+    "parentSha": "b92e104",
+    "dependsOn": [],
     "status": "evaluated",
     "growthScore": 5,
     "costScore": 79,
@@ -111,6 +126,9 @@
       "cveSeverity": "HIGH"
     },
     "forkRepoName": "task-risk-ratelimit",
+    "commitSha": "92a014c",
+    "parentSha": "b92e104",
+    "dependsOn": ["intent-risk-cve"],
     "status": "evaluated",
     "growthScore": -5,
     "costScore": 10,
@@ -132,6 +150,9 @@
       "tier": "enterprise"
     },
     "forkRepoName": "task-growth-audit",
+    "commitSha": "c5108b9",
+    "parentSha": "b92e104",
+    "dependsOn": ["intent-growth-sso"],
     "status": "evaluated",
     "growthScore": 89,
     "costScore": -15,
@@ -151,6 +172,9 @@
       "latencyImpactMs": -60
     },
     "forkRepoName": "task-cost-compression",
+    "commitSha": "a84e207",
+    "parentSha": "b92e104",
+    "dependsOn": ["intent-cost-cache"],
     "status": "evaluated",
     "growthScore": 10,
     "costScore": 72,
@@ -170,6 +194,9 @@
       "cveSeverity": "HIGH"
     },
     "forkRepoName": "task-risk-sanitize",
+    "commitSha": "2b719dc",
+    "parentSha": "b92e104",
+    "dependsOn": [],
     "status": "evaluated",
     "growthScore": 0,
     "costScore": -5,
@@ -190,6 +217,9 @@
       "tier": "growth"
     },
     "forkRepoName": "task-growth-csv",
+    "commitSha": "6fe3051",
+    "parentSha": "b92e104",
+    "dependsOn": ["intent-growth-audit"],
     "status": "evaluated",
     "growthScore": 68,
     "costScore": -5,

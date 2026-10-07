@@ -305,13 +305,25 @@
           </div>
         </div>
 
+        <!-- Architectural DAG -->
+        <div class="modal-section">
+          <div class="modal-section-title">Topological DAG & Prerequisites</div>
+          <div id="modal-dag-info" style="font-size: 0.76rem; background: var(--bg-control); border: 1px solid var(--border-line); border-radius: var(--radius-sm); padding: 10px 12px;">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+
         <!-- Artifacts Repo -->
         <div class="modal-section">
-          <div class="modal-section-title">Cloudflare Artifacts Ephemeral Fork</div>
+          <div class="modal-section-title">Cloudflare Artifacts Git Primitives</div>
           <div class="modal-repo-info">
-            <div><span class="text-muted">Repository:</span> <code id="modal-repo-name">task-fork</code></div>
-            <div><span class="text-muted">Branch:</span> <code>main</code></div>
-            <div><span class="text-muted">Remote:</span> <code id="modal-repo-remote">https://artifacts.cloudflare.com/...</code></div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <div><span class="text-muted">Repository:</span> <code id="modal-repo-name">task-fork</code></div>
+              <span class="status-pill status-ready" style="font-size: 0.65rem;">Ephemeral Fork</span>
+            </div>
+            <div><span class="text-muted">Agent Commit SHA:</span> <code id="modal-commit-sha" style="color: var(--brand-orange); font-weight: 600;">7a8f3b2</code></div>
+            <div><span class="text-muted">Ancestor Base:</span> <code id="modal-parent-sha">dispatch-main @ v1.0.0 [b92e104]</code></div>
+            <div><span class="text-muted">Git Clone Remote:</span> <code id="modal-repo-remote" style="user-select: all; font-size: 0.72rem;">git clone https://artifacts.cloudflare.com/dispatch/...</code></div>
           </div>
         </div>
 

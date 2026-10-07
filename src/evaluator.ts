@@ -55,7 +55,7 @@ Respond ONLY with valid JSON in this exact structure:
     // If Workers AI binding is present, run the model
     if (this.env.AI) {
       try {
-        const response = await this.env.AI.run("@cf/meta/llama-3.3-70b-instruct", {
+        const response = await this.env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
           messages: [
             {
               role: "system",

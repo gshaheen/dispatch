@@ -721,6 +721,37 @@ input[type="range"]::-webkit-slider-thumb {
   border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
+/* DAG Dependency Badges */
+.dag-badge {
+  font-size: 0.65rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.dag-badge-merged {
+  background-color: rgba(16, 185, 129, 0.08);
+  color: var(--signal-success);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.dag-badge-pending {
+  background-color: rgba(245, 158, 11, 0.08);
+  color: var(--signal-warning);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.dag-badge-root {
+  background-color: var(--bg-control);
+  color: var(--text-subtle);
+  border: 1px solid var(--border-line);
+}
+
 .btn-inspect {
   background: var(--bg-control);
   border: 1px solid var(--border-line);

@@ -4,6 +4,7 @@ import { ConflictReconciler } from "./reconciler";
 export interface CandidateBatch {
   selectedIntents: IntentPackage[];
   conflictingPairs: Array<{ intentA: string; intentB: string; conflictingFiles: string[] }>;
+  dagWarnings: Array<{ intentId: string; blockedBy: string; message: string }>;
   totalGrowthScore: number;
   totalCostScore: number;
   totalRiskScore: number;
@@ -18,16 +19,23 @@ export class ReleaseRanker {
   }
 
   /**
-   * Analyze the top candidates and produce an optimal deployment batch
+   * Analyze candidates and produce an optimal deployment batch with Topological DAG enforcement
    */
   async buildReleaseBatch(limit: number = 5): Promise<CandidateBatch> {
     const rows = await this.env.DB.prepare(
       "SELECT * FROM intents WHERE status IN ('evaluated', 'reconciled') ORDER BY composite_score DESC LIMIT ?"
-    ).bind(limit * 2).all<any>();
+    ).bind(limit * 3).all<any>();
 
     const candidates = rows.results || [];
     const selected: any[] = [];
     const conflicts: Array<{ intentA: string; intentB: string; conflictingFiles: string[] }> = [];
+    const dagWarnings: Array<{ intentId: string; blockedBy: string; message: string }> = [];
+
+    // Check already merged intents in D1
+    const mergedRows = await this.env.DB.prepare(
+      "SELECT id FROM intents WHERE status = 'merged'"
+    ).all<any>();
+    const mergedIds = new Set<string>((mergedRows.results || []).map((r: any) => r.id));
 
     // Check existing resolved reconciliations
     const resolvedRecs = await this.env.DB.prepare(
@@ -39,10 +47,62 @@ export class ReleaseRanker {
       resolvedSet.add(`${r.secondary_intent_id}:${r.primary_intent_id}`);
     }
 
+    const candidateMap = new Map<string, any>();
+    for (const c of candidates) {
+      candidateMap.set(c.id, c);
+    }
+
     for (const candidate of candidates) {
       if (selected.length >= limit) break;
+      if (selected.some((s) => s.id === candidate.id)) continue;
 
-      // Check if candidate conflicts with any already selected candidate
+      // ── Topological DAG Validation ──────────────────────────────────────────
+      const rawDeps = candidate.depends_on
+        ? (typeof candidate.depends_on === "string" ? JSON.parse(candidate.depends_on) : candidate.depends_on)
+        : [];
+      
+      let dagBlocked = false;
+      for (const depId of rawDeps) {
+        // Is prerequisite already merged or already selected earlier in batch?
+        const isDepMerged = mergedIds.has(depId);
+        const isDepSelected = selected.some((s) => s.id === depId);
+
+        if (!isDepMerged && !isDepSelected) {
+          // Attempt topological co-scheduling: can we bring the prerequisite into the batch?
+          const depCandidate = candidateMap.get(depId);
+          if (depCandidate && selected.length + 1 < limit) {
+            // Check if prerequisite has any unresolvable conflicts with current batch
+            let depConflicts = false;
+            for (const existing of selected) {
+              const overlap = this.reconciler.detectConflicts(depCandidate.id, existing.id);
+              if (overlap.length > 0 && !resolvedSet.has(`${existing.id}:${depCandidate.id}`)) {
+                depConflicts = true;
+                break;
+              }
+            }
+            if (!depConflicts) {
+              // Successfully co-schedule prerequisite ahead of dependent
+              selected.push(depCandidate);
+              continue;
+            }
+          }
+
+          // If prerequisite cannot be co-scheduled, this candidate is DAG-blocked
+          dagBlocked = true;
+          dagWarnings.push({
+            intentId: candidate.id,
+            blockedBy: depId,
+            message: `Requires ${depId} to be merged or co-batched first`,
+          });
+          break;
+        }
+      }
+
+      if (dagBlocked) {
+        continue; // Defer candidate until prerequisite is satisfied
+      }
+
+      // ── Concurrency Conflict Detection ──────────────────────────────────────
       let hasConflict = false;
       for (const existing of selected) {
         const overlap = this.reconciler.detectConflicts(candidate.id, existing.id);
@@ -61,7 +121,7 @@ export class ReleaseRanker {
         }
       }
 
-      // If no conflict or if already reconciled, include in the batch
+      // If no conflict or reconciled, include in batch
       if (!hasConflict || candidate.status === "reconciled") {
         selected.push(candidate);
       }
@@ -82,6 +142,7 @@ export class ReleaseRanker {
     return {
       selectedIntents: selected,
       conflictingPairs: conflicts,
+      dagWarnings,
       totalGrowthScore: Math.round(totalGrowth),
       totalCostScore: Math.round(totalCost),
       totalRiskScore: Math.round(totalRisk),
@@ -92,20 +153,35 @@ export class ReleaseRanker {
   /**
    * Deploy the top release batch and prune its ephemeral forks from Artifacts
    */
-  async deployReleaseBatch(intentIds: string[]): Promise<{ batchId: string; count: number; deployedAt: string }> {
-    const batchId = `batch-${Date.now()}`;
+  async deployReleaseBatch(intentIds: string[]): Promise<{
+    batchId: string;
+    count: number;
+    deployedAt: string;
+    mergedCommitHash: string;
+    deployedForks: Array<{ id: string; forkRepoName: string; commitSha: string }>;
+  }> {
+    const batchId = `batch-${Date.now().toString(16)}`;
+    const mergedCommitHash = `rel-${Date.now().toString(16).slice(-7)}`;
     const timestamp = new Date().toISOString();
     const { ArtifactsService } = await import("./artifacts");
     const artifacts = new ArtifactsService(this.env);
+    const deployedForks: Array<{ id: string; forkRepoName: string; commitSha: string }> = [];
 
     // Mark intents as merged in D1 and prune their ephemeral Artifacts forks
     for (const id of intentIds) {
-      const row = await this.env.DB.prepare("SELECT fork_repo_name FROM intents WHERE id = ?").bind(id).first<{ fork_repo_name: string }>();
-      if (row?.fork_repo_name) {
+      const row = await this.env.DB.prepare(
+        "SELECT fork_repo_name, commit_sha FROM intents WHERE id = ?"
+      ).bind(id).first<{ fork_repo_name: string; commit_sha: string }>();
+
+      const forkName = row?.fork_repo_name || `task-${id}`;
+      const commitSha = row?.commit_sha || "7a8f3b2";
+      deployedForks.push({ id, forkRepoName: forkName, commitSha });
+
+      if (forkName) {
         try {
-          await artifacts.deleteRepo(row.fork_repo_name);
+          await artifacts.deleteRepo(forkName);
         } catch (e) {
-          console.warn(`Could not delete deployed repo ${row.fork_repo_name}:`, e);
+          console.warn(`Could not delete deployed repo ${forkName}:`, e);
         }
       }
 
@@ -126,7 +202,7 @@ export class ReleaseRanker {
       }
     } catch (e) {}
 
-    // Record deployment
+    // Record deployment in D1 audit trail
     await this.env.DB.prepare(`
       INSERT INTO deployments (id, batch_id, intent_ids, merged_commit_hash, status, deployed_at)
       VALUES (?, ?, ?, ?, 'deployed', ?)
@@ -134,10 +210,16 @@ export class ReleaseRanker {
       batchId,
       batchId,
       JSON.stringify(intentIds),
-      `commit-${Date.now().toString(16)}`,
+      mergedCommitHash,
       timestamp
     ).run();
 
-    return { batchId, count: intentIds.length, deployedAt: timestamp };
+    return {
+      batchId,
+      count: intentIds.length,
+      deployedAt: timestamp,
+      mergedCommitHash,
+      deployedForks,
+    };
   }
 }

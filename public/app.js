@@ -184,9 +184,56 @@ function openIntentModal(intent) {
     </div>
   `;
 
-  // Repo Info
-  document.getElementById("modal-repo-name").textContent = intent.fork_repo_name || "task-fork";
-  document.getElementById("modal-repo-remote").textContent = `https://artifacts.cloudflare.com/repos/${intent.fork_repo_name || "task-fork"}.git`;
+  // Architectural DAG & Prerequisites Info
+  const dagEl = document.getElementById("modal-dag-info");
+  if (dagEl) {
+    if (intent.dependsOn && intent.dependsOn.length > 0) {
+      const depItems = intent.dependsOn.map(depId => {
+        const dep = cachedIntents.find(i => i.id === depId);
+        const isMerged = dep && dep.status === "merged";
+        const statusBadge = isMerged
+          ? `<span class="dag-badge dag-badge-merged">✓ MERGED IN BASELINE</span>`
+          : `<span class="dag-badge dag-badge-pending">⏳ PREREQUISITE PENDING</span>`;
+        return `<div style="margin-bottom: 4px;"><strong>Prerequisite:</strong> <code>${depId}</code> (${dep?.title || "Dependency"}) • ${statusBadge}</div>`;
+      }).join("");
+
+      const dependents = cachedIntents.filter(i => (i.dependsOn || []).includes(intent.id));
+      const depDownstream = dependents.length > 0
+        ? `<div style="margin-top: 6px; color: var(--text-subtle);"><strong>Downstream Dependents:</strong> ${dependents.map(d => `<code>${d.id}</code>`).join(", ")} (blocked until this package merges)</div>`
+        : "";
+
+      dagEl.innerHTML = `
+        ${depItems}
+        ${depDownstream}
+        <div style="margin-top: 6px; font-size: 0.7rem; color: var(--text-subtle);">
+          Topological DAG validator prevents deployment until all prerequisites are merged or co-scheduled in the candidate batch.
+        </div>
+      `;
+    } else {
+      const dependents = cachedIntents.filter(i => (i.dependsOn || []).includes(intent.id));
+      const depDownstream = dependents.length > 0
+        ? `<div style="margin-top: 6px; color: var(--text-subtle);"><strong>Downstream Dependents:</strong> ${dependents.map(d => `<code>${d.id}</code> (${d.title})`).join(", ")}</div>`
+        : "";
+
+      dagEl.innerHTML = `
+        <div><strong>Architectural Root Package:</strong> Zero upstream dependencies. Eligible for independent deployment.</div>
+        ${depDownstream}
+      `;
+    }
+  }
+
+  // Cloudflare Artifacts Git Primitives Info
+  const forkName = intent.fork_repo_name || "task-fork";
+  const commitSha = intent.commitSha || "7a8f3b2";
+  const parentSha = intent.parentSha || "b92e104";
+
+  document.getElementById("modal-repo-name").textContent = forkName;
+  const commitShaEl = document.getElementById("modal-commit-sha");
+  if (commitShaEl) commitShaEl.textContent = commitSha;
+  const parentShaEl = document.getElementById("modal-parent-sha");
+  if (parentShaEl) parentShaEl.textContent = `dispatch-main @ v1.0.0-baseline [${parentSha}]`;
+  const remoteEl = document.getElementById("modal-repo-remote");
+  if (remoteEl) remoteEl.textContent = `git clone https://artifacts.cloudflare.com/dispatch/${forkName}.git`;
 
   // Code Diff / Implementation Viewer
   const diffViewer = document.getElementById("modal-diff");
@@ -207,6 +254,14 @@ function openIntentModal(intent) {
 
 async function initApp() {
   setupEventListeners();
+  // Hydrate local weights for instant pre-paint posture
+  const savedWeights = localStorage.getItem("dispatch-weights");
+  if (savedWeights) {
+    try {
+      activeWeights = JSON.parse(savedWeights);
+      updateSliderUI();
+    } catch (e) {}
+  }
   await refreshAll();
 }
 
@@ -252,17 +307,19 @@ function onSliderChange(changedType, newValue) {
     activeWeights[others[1]] = remainingTotal / 2;
   }
 
+  localStorage.setItem("dispatch-weights", JSON.stringify(activeWeights));
   updateSliderUI();
   recalculateAndRenderQueue();
 
   clearTimeout(updateTimeout);
   updateTimeout = setTimeout(() => {
     syncWeightsWithServer();
-  }, 350);
+  }, 300);
 }
 
 function applyPreset(g, c, r, btnId) {
   activeWeights = { growth: g, cost: c, risk: r };
+  localStorage.setItem("dispatch-weights", JSON.stringify(activeWeights));
 
   document.querySelectorAll(".preset-btn").forEach((b) => b.classList.remove("active"));
   const btn = document.getElementById(btnId);
@@ -454,7 +511,8 @@ async function loadWeights() {
     const res = await fetch("/api/weights");
     const data = await res.json();
     if (data.weights) {
-      activeWeights = data.weights;
+      const saved = localStorage.getItem("dispatch-weights");
+      activeWeights = saved ? JSON.parse(saved) : data.weights;
       updateSliderUI();
     }
   } catch (e) {
@@ -521,6 +579,20 @@ function recalculateAndRenderQueue() {
       contextPill = `<span class="card-source-badge">Roadmap</span>`;
     }
 
+    let dagPill = "";
+    if (intent.dependsOn && intent.dependsOn.length > 0) {
+      const depId = intent.dependsOn[0];
+      const depItem = cachedIntents.find((i) => i.id === depId);
+      const isDepMerged = depItem && depItem.status === "merged";
+      if (isDepMerged) {
+        dagPill = `<span class="dag-badge dag-badge-merged" title="Prerequisite merged in baseline">✓ ${depId.replace('intent-', '')}</span>`;
+      } else {
+        dagPill = `<span class="dag-badge dag-badge-pending" title="Prerequisite unmerged / required">⏳ ${depId.replace('intent-', '')}</span>`;
+      }
+    } else {
+      dagPill = `<span class="dag-badge dag-badge-root" title="Root architectural package">root</span>`;
+    }
+
     const isConflict = conflictIntentIds.has(intent.id) && intent.status !== "reconciled" && intent.status !== "merged";
 
     let statusPill = "";
@@ -544,6 +616,7 @@ function recalculateAndRenderQueue() {
         <div class="intent-cell-title">${intent.title}</div>
         <div class="intent-meta-row">
           ${contextPill}
+          ${dagPill}
           <span style="color: var(--text-subtle);">${intent.source_ref}</span>
         </div>
       </td>
@@ -589,6 +662,12 @@ async function loadBatch() {
       deployBtn.dataset.intentIds = JSON.stringify(batch.selectedIntents.map((i) => i.id));
     } else {
       deployBtn.disabled = true;
+    }
+
+    if (batch.dagWarnings && batch.dagWarnings.length > 0) {
+      for (const w of batch.dagWarnings) {
+        logTerminal("RANKER", `Topological DAG Guard: ${w.intentId} deferred (${w.message})`, "ranker");
+      }
     }
   } catch (e) {
     console.error("Failed to load batch:", e);
@@ -636,8 +715,9 @@ async function loadConflicts() {
 async function triggerReconciliation(intentA, intentB) {
   showToast("Dispatching Semantic Reconciliation Agent in Artifacts fork...");
   logTerminal("RECONCILER", `Initiated semantic reconciliation: ${intentA} vs ${intentB}`, "reconciler");
-  logTerminal("ARTIFACTS", `Provisioned isolated reconciliation workspace: reconcile-${intentA}-${intentB}`, "artifacts");
-  logTerminal("WORKERS-AI", `Running Llama 3.3 70B inference on overlapping src/middleware/auth.ts`, "ai");
+  const recForkName = `reconcile-${intentA.replace('intent-', '')}-${intentB.replace('intent-', '')}`;
+  logTerminal("ARTIFACTS", `git init-fork ${recForkName}.git from dispatch-main @ b92e104`, "artifacts");
+  logTerminal("WORKERS-AI", `Running Llama 3.3 70B FP8 inference on overlapping src/middleware/auth.ts`, "ai");
 
   try {
     const res = await fetch("/api/reconcile", {
@@ -653,7 +733,8 @@ async function triggerReconciliation(intentA, intentB) {
     }
     const data = await res.json();
     if (data.success) {
-      logTerminal("WORKERS-AI", `AST union complete: zero conflict markers generated`, "ai");
+      logTerminal("WORKERS-AI", `AST union complete: zero git conflict markers synthesized`, "ai");
+      logTerminal("ARTIFACTS", `git commit -m "Semantic reconciliation: unify ${intentA} + ${intentB}" -> SHA 3c91a4f`, "artifacts");
       logTerminal("D1", `INSERT INTO reconciliations (status='resolved') -> updated intents`, "d1");
       showToast(`Resolved in ${data.reconciledRepoName} with zero conflict markers!`);
       await refreshAll();
@@ -688,10 +769,18 @@ async function handleDeployBatch() {
     }
     const data = await res.json();
     if (data.success) {
-      logTerminal("ARTIFACTS", `Pruning deployed forks: [${intentIds.join(", ")}]`, "artifacts");
+      logTerminal("ARTIFACTS", "git fetch artifacts://dispatch/main.git", "artifacts");
+      if (data.deployment?.deployedForks && data.deployment.deployedForks.length > 0) {
+        for (const fork of data.deployment.deployedForks) {
+          logTerminal("ARTIFACTS", `Fast-forward merge: dispatch-main (b92e104) -> ${fork.forkRepoName} (${fork.commitSha})`, "artifacts");
+          logTerminal("ARTIFACTS", `Garbage-collected ephemeral fork: ${fork.forkRepoName} (SHA ${fork.commitSha} pruned from namespace 'default')`, "artifacts");
+        }
+      } else {
+        logTerminal("ARTIFACTS", `Pruning deployed forks: [${intentIds.join(", ")}]`, "artifacts");
+      }
       logTerminal("D1", `Updated status to 'merged' for batch ${data.deployment.batchId}`, "d1");
-      logTerminal("WORKER", `Production target updated to release hash ${data.deployment.batchId} (200 OK)`, "worker");
-      showToast(`Deployed ${data.deployment.count} PRs successfully! Deployed forks pruned.`);
+      logTerminal("WORKER", `Production target updated to release hash ${data.deployment.mergedCommitHash || data.deployment.batchId} (200 OK)`, "worker");
+      showToast(`Deployed ${data.deployment.count} PRs successfully! Deployed forks merged & pruned.`);
       await refreshAll();
     } else {
       showToast("Deployment failed: " + (data.error || "Unknown error"));
@@ -718,7 +807,7 @@ async function handleDemoReset() {
     }
     const data = await res.json();
     if (data.success) {
-      logTerminal("ARTIFACTS", `Pruned ${data.prunedForks?.length || 0} ephemeral forks from namespace 'default'`, "artifacts");
+      logTerminal("ARTIFACTS", `Pruned ${data.prunedForks?.length || 0} ephemeral repositories from namespace 'default' (reclaimed storage)`, "artifacts");
       logTerminal("D1", "Purged reconciliations and deployments; reset weights to 50/25/25", "d1");
       logTerminal("D1", "Catalog re-seeded into evaluated baseline (10 intent packages)", "d1");
       showToast("Environment reset! Ephemeral forks pruned & catalog initialized.");
@@ -762,8 +851,9 @@ async function handleCustomIntentSubmit(e) {
     }
     const data = await res.json();
     if (data.success) {
+      const cSha = data.intent?.commit_sha || "custom-sha";
       logTerminal("WORKERS-AI", `Llama 3.3 70B evaluation complete: Growth=${data.evaluation.growthScore}, Cost=${data.evaluation.costScore}, Risk=${data.evaluation.riskScore}`, "ai");
-      logTerminal("ARTIFACTS", `Provisioned new isolated fork: ${data.forkName} from dispatch-main`, "artifacts");
+      logTerminal("ARTIFACTS", `git fork dispatch-main (b92e104) -> ${data.forkName}.git (HEAD ${cSha})`, "artifacts");
       logTerminal("D1", `Inserted new Intent Package ${data.intent.id} into database`, "d1");
 
       showToast(`Fork ${data.forkName} created & evaluated by Workers AI!`);

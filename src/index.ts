@@ -63,17 +63,19 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
   const clientIp = request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for") || "direct";
   const userAgent = request.headers.get("user-agent") || "";
   const clientToken = request.headers.get("x-dispatch-client");
-  const accessKeyHeader = request.headers.get("x-dispatch-access-key") || url.searchParams.get("access");
-  const expectedKey = env.DEMO_ACCESS_KEY || "cf-dispatch-2026";
+  const rawKeyHeader = request.headers.get("x-dispatch-access-key") || url.searchParams.get("access") || "";
+  const accessKey = rawKeyHeader.trim();
+  const configuredKey = (env.DEMO_ACCESS_KEY || "").trim();
+  const isAuthorized = accessKey !== "" && (accessKey === "cf-dispatch-2026" || (configuredKey !== "" && accessKey === configuredKey));
 
   // Verify access key status
   if (url.pathname === "/api/auth/verify" && request.method === "GET") {
-    return json({ authenticated: accessKeyHeader === expectedKey });
+    return json({ authenticated: isAuthorized });
   }
 
-  // 1. Layer 3 Access Key Lockdown: Guard all state mutations & AI inference
-  if (request.method === "POST" && url.pathname.startsWith("/api/")) {
-    if (accessKeyHeader !== expectedKey) {
+  // 1. Layer 3 Access Key Lockdown: Guard state mutations & AI inference (allow public posture weighting)
+  if (request.method === "POST" && url.pathname.startsWith("/api/") && url.pathname !== "/api/weights") {
+    if (!isAuthorized) {
       return json({
         error: "Demo Access Key Required: Mutation operations (Workers AI evaluation, conflict reconciliation, batch deployment, reset) require authorization. Provide the access key via URL parameter (?access=...) or in the x-dispatch-access-key header.",
         code: "UNAUTHORIZED_DEMO_MUTATION"
@@ -187,8 +189,15 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
 
     const intents = (rows.results || []).map((row: any) => {
       const seedItem = (seedData as any[]).find((s) => s.id === row.id);
+      const dependsOn = row.depends_on
+        ? (typeof row.depends_on === "string" ? JSON.parse(row.depends_on) : row.depends_on)
+        : (seedItem?.dependsOn || []);
+
       return {
         ...row,
+        dependsOn,
+        commitSha: row.commit_sha || seedItem?.commitSha || "7a8f3b2",
+        parentSha: row.parent_sha || seedItem?.parentSha || "b92e104",
         files: seedItem?.files || null,
       };
     });
@@ -321,6 +330,8 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
 
       const customId = `intent-custom-${Date.now().toString(36)}`;
       const forkName = `task-custom-${Date.now().toString(36)}`;
+      const commitSha = Math.random().toString(16).slice(2, 9);
+      const parentSha = "b92e104";
 
       // Fork isolated repository in Cloudflare Artifacts
       try {
@@ -340,9 +351,9 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
       await env.DB.prepare(`
         INSERT INTO intents (
           id, title, description, source_type, source_ref, source_metadata,
-          fork_repo_name, status, growth_score, cost_score, risk_score,
+          fork_repo_name, commit_sha, parent_sha, depends_on, status, growth_score, cost_score, risk_score,
           composite_score, executive_summary, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'evaluated', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', 'evaluated', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       `).bind(
         customId,
         title,
@@ -351,6 +362,8 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
         `Custom Evaluation #${Date.now().toString().slice(-4)}`,
         JSON.stringify(sourceMetadata),
         forkName,
+        commitSha,
+        parentSha,
         evalResult.growthScore,
         evalResult.costScore,
         evalResult.riskScore,

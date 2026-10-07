@@ -66,7 +66,7 @@ Respond ONLY with the complete unified file code. No markdown fences or explanat
       let unifiedCode = "";
       if (this.env.AI) {
         try {
-          const res = await this.env.AI.run("@cf/meta/llama-3.3-70b-instruct", {
+          const res = await this.env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
             messages: [
               {
                 role: "system",

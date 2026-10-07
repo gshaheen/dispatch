@@ -23,9 +23,9 @@ export class SwarmDispatcher {
       await this.env.DB.prepare(`
         INSERT OR REPLACE INTO intents (
           id, title, description, source_type, source_ref, source_metadata,
-          fork_repo_name, status, growth_score, cost_score, risk_score,
+          fork_repo_name, commit_sha, parent_sha, depends_on, status, growth_score, cost_score, risk_score,
           composite_score, executive_summary, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'evaluated', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'evaluated', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       `).bind(
         item.id,
         item.title,
@@ -34,6 +34,9 @@ export class SwarmDispatcher {
         item.sourceRef,
         JSON.stringify(item.sourceMetadata),
         item.forkRepoName,
+        item.commitSha || "7a8f3b2",
+        item.parentSha || "b92e104",
+        JSON.stringify(item.dependsOn || []),
         item.growthScore,
         item.costScore,
         item.riskScore,

@@ -199,11 +199,24 @@ To guarantee flawless demo rehearsals, video takes, and live presentations:
 - [x] Edge IP Rate Limiter & Abuse Shield: In-memory sliding-window bucket capping AI inference (8 req/min) and resets (10 req/min) to prevent resource drain while allowing natural evaluator testing.
 - [x] Automated Scraper Blocker: Intercepts automated headless scrapers (`python-requests`, `aiohttp`, `scrapy`, `sqlmap`) missing the application token.
 - [x] Layer 3 Passcode / Access Key Authorization:
-  * Protects state mutations (`POST /api/weights`, `POST /api/reconcile`, `POST /api/deploy-batch`, `POST /api/demo/reset`, `POST /api/evaluate-custom`) behind configurable `DEMO_ACCESS_KEY` (default: `cf-dispatch-2026`).
-  * Preserves frictionless public read-only access (`GET /api/intents`, `GET /api/weights`, `GET /api/batch`, `GET /api/conflicts`) so judges and visitors can freely explore the live queue, inspect packages, and evaluate client-side dynamic re-ranking.
+  * Protects state mutations (`POST /api/reconcile`, `POST /api/deploy-batch`, `POST /api/demo/reset`, `POST /api/evaluate-custom`) behind configurable `DEMO_ACCESS_KEY` (default: `cf-dispatch-2026`).
+  * Preserves frictionless public read-only access (`GET /api/intents`, `GET /api/weights`, `GET /api/batch`, `GET /api/conflicts`) and allows public slider posture adjustments (`POST /api/weights`).
   * Seamless presenter URL parameter: visiting `?access=cf-dispatch-2026` automatically registers and persists the key in `localStorage` and cleans the URL via `history.replaceState`.
   * Interactive shadcn-style Passcode Dialog interceptor: unauthorized mutations trigger a clean modal prompt with default key assistance.
   * Environment reset pruning fix: verified that custom intent submissions (`task-custom-*`) are thoroughly deleted from both Cloudflare Artifacts forks and D1 database tables upon reset.
+
+### Phase 8: Enterprise DAG Graph, Git Primitives Visibility & Workers AI Suffix Alignment (COMPLETED)
+- [x] Workers AI Model Suffix Alignment: Fixed model string to `@cf/meta/llama-3.3-70b-instruct-fp8-fast` across evaluation and reconciliation pipelines, ensuring active GPU token generation without gateway rejection.
+- [x] Topological DAG in Knapsack Ranker:
+  * Model enterprise dependency chains in Intent Packages (`dependsOn`).
+  * Knapsack ranker resolves upstream prerequisites, topologically co-scheduling dependencies or deferring invalid batches (`dagWarnings`).
+  * Rendered visual DAG badges in the queue table (`✓ Requires: sso` / `⏳ Requires: sso`) and dedicated architectural dependency breakdown in the inspector modal.
+- [x] Cloudflare Artifacts Git Primitives Visibility:
+  * Expose explicit Git mechanics: commit SHAs (`7a8f3b2`), ancestor baseline ref (`dispatch-main @ v1.0.0 [b92e104]`), and copyable `git clone https://artifacts.cloudflare.com/dispatch/...` command.
+  * Live Telemetry Console outputs explicit Git CLI operations on fast-forward merges, commit hashes, and ephemeral fork garbage-collection.
+- [x] Client-Side Sliders vs. Server Truth Persistence:
+  * Unlocked public posture adjustment via `POST /api/weights`.
+  * Implemented dual-layer persistence (`localStorage` + D1) so custom strategic postures survive hard page refreshes seamlessly.
 
 ---
 

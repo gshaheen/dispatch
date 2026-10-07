@@ -284,11 +284,16 @@ function updateSliderUI() {
   document.getElementById("val-risk").textContent = Math.round(activeWeights.risk * 100) + "%";
 }
 
+const API_HEADERS = {
+  "Content-Type": "application/json",
+  "x-dispatch-client": "dispatch-console-v1"
+};
+
 async function syncWeightsWithServer() {
   try {
     await fetch("/api/weights", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: API_HEADERS,
       body: JSON.stringify(activeWeights),
     });
     logTerminal("D1", `POST /api/weights -> persisted weights { growth: ${activeWeights.growth.toFixed(2)}, cost: ${activeWeights.cost.toFixed(2)}, risk: ${activeWeights.risk.toFixed(2)} }`, "d1");
@@ -492,7 +497,7 @@ async function triggerReconciliation(intentA, intentB) {
   try {
     const res = await fetch("/api/reconcile", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: API_HEADERS,
       body: JSON.stringify({ intentA, intentB }),
     });
     const data = await res.json();
@@ -519,7 +524,7 @@ async function handleDeployBatch() {
   try {
     const res = await fetch("/api/deploy-batch", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: API_HEADERS,
       body: JSON.stringify({ intentIds }),
     });
     const data = await res.json();
@@ -540,7 +545,10 @@ async function handleDemoReset() {
   logTerminal("RESET", "POST /api/demo/reset -> initiating full environment reset", "reset");
 
   try {
-    const res = await fetch("/api/demo/reset", { method: "POST" });
+    const res = await fetch("/api/demo/reset", {
+      method: "POST",
+      headers: API_HEADERS,
+    });
     const data = await res.json();
     if (data.success) {
       logTerminal("ARTIFACTS", `Pruned ${data.prunedForks?.length || 0} ephemeral forks from namespace 'default'`, "artifacts");
@@ -568,7 +576,7 @@ async function handleCustomIntentSubmit(e) {
   try {
     const res = await fetch("/api/evaluate-custom", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: API_HEADERS,
       body: JSON.stringify({
         title,
         description,

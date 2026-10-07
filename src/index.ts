@@ -24,7 +24,70 @@ export default {
   },
 };
 
+// Edge In-Memory Rate Limiting & Abuse Shield
+interface RateLimitBucket {
+  count: number;
+  resetAt: number;
+}
+const ipBuckets = new Map<string, RateLimitBucket>();
+
+function checkRateLimit(key: string, maxRequests: number, windowMs: number): { allowed: boolean; remaining: number } {
+  const now = Date.now();
+  let bucket = ipBuckets.get(key);
+
+  if (!bucket || now > bucket.resetAt) {
+    bucket = { count: 1, resetAt: now + windowMs };
+    ipBuckets.set(key, bucket);
+    return { allowed: true, remaining: maxRequests - 1 };
+  }
+
+  if (bucket.count >= maxRequests) {
+    return { allowed: false, remaining: 0 };
+  }
+
+  bucket.count++;
+  return { allowed: true, remaining: maxRequests - bucket.count };
+}
+
+function isKnownMaliciousBot(userAgent: string): boolean {
+  const ua = userAgent.toLowerCase();
+  const suspicious = [
+    "python-requests", "aiohttp", "scrapy", "urllib", "got",
+    "go-http-client", "curl/7", "wget", "headless", "phantomjs",
+    "sqlmap", "nikto", "masscan", "zgrab", "semrush", "ahrefs"
+  ];
+  return suspicious.some((s) => ua.includes(s));
+}
+
 async function handleApi(request: Request, url: URL, env: Env): Promise<Response> {
+  const clientIp = request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for") || "direct";
+  const userAgent = request.headers.get("user-agent") || "";
+  const clientToken = request.headers.get("x-dispatch-client");
+
+  // 1. Block automated scrapers/bots on state-mutation or AI endpoints
+  if (request.method === "POST" && isKnownMaliciousBot(userAgent) && !clientToken) {
+    return json({ error: "Automated scraper blocked by Dispatch Security Shield" }, 403);
+  }
+
+  // 2. Rate limit expensive AI inference endpoints (max 8 requests per minute per IP)
+  if (url.pathname === "/api/evaluate-custom" || url.pathname === "/api/reconcile" || url.pathname === "/api/intents/evaluate") {
+    const rl = checkRateLimit(`ai:${clientIp}`, 8, 60000);
+    if (!rl.allowed) {
+      return json({
+        error: "Rate limit exceeded. To protect demo resources, Workers AI is capped at 8 requests/min per IP.",
+        retryAfter: 60
+      }, 429);
+    }
+  }
+
+  // 3. Rate limit environment reset endpoint (max 10 resets per minute per IP)
+  if (url.pathname === "/api/demo/reset") {
+    const rl = checkRateLimit(`reset:${clientIp}`, 10, 60000);
+    if (!rl.allowed) {
+      return json({ error: "Reset rate limit exceeded. Please wait 1 minute.", retryAfter: 60 }, 429);
+    }
+  }
+
   const artifacts = new ArtifactsService(env);
 
   // Health check
@@ -353,16 +416,17 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
       // 1. Prune ephemeral Artifacts forks
       const pruned = await artifacts.pruneEphemeralForks();
 
-      // 2. Clear reconciliations and deployments records
+      // 2. Clear reconciliations, deployments, AND custom/modified intents
       await env.DB.prepare("DELETE FROM reconciliations").run();
       await env.DB.prepare("DELETE FROM deployments").run();
+      await env.DB.prepare("DELETE FROM intents").run();
 
       // 3. Reset strategic weights to default 50/25/25
       await env.DB.prepare(
         "UPDATE strategic_weights SET growth_weight = 0.50, cost_weight = 0.25, risk_weight = 0.25, updated_at = CURRENT_TIMESTAMP WHERE id = 1"
       ).run();
 
-      // 4. Re-seed all intents back to pristine evaluated state
+      // 4. Re-seed all 10 pristine baseline intents back to evaluated state
       const dispatcher = new SwarmDispatcher(env);
       await dispatcher.seedCatalog();
 

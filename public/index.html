@@ -4,6 +4,25 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dispatch — The Strategic Git Platform</title>
+  
+  <!-- Pre-paint theme evaluation: default to system, support explicit light/dark -->
+  <script>
+    (function() {
+      var saved = localStorage.getItem("dispatch-theme") || "system";
+      if (saved === "light") {
+        document.documentElement.setAttribute("data-mode", "light");
+        document.documentElement.style.colorScheme = "light";
+      } else if (saved === "dark") {
+        document.documentElement.setAttribute("data-mode", "dark");
+        document.documentElement.style.colorScheme = "dark";
+      } else {
+        document.documentElement.removeAttribute("data-mode");
+        document.documentElement.style.colorScheme = "light dark";
+      }
+    })();
+  </script>
+
+  <link rel="stylesheet" href="/kumo.css">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -22,6 +41,13 @@
     </div>
 
     <div class="header-actions">
+      <!-- Theme Switcher: Default to System, with manual change to Light or Dark -->
+      <div class="theme-switch-group" id="theme-switcher">
+        <button type="button" class="theme-switch-btn active" data-theme="system" title="Follow OS theme">💻 System</button>
+        <button type="button" class="theme-switch-btn" data-theme="light" title="Light mode">☀️ Light</button>
+        <button type="button" class="theme-switch-btn" data-theme="dark" title="Dark mode">🌙 Dark</button>
+      </div>
+
       <div class="status-pills">
         <span><span class="pill-dot"></span>Workers</span>
         <span><span class="pill-dot"></span>Artifacts</span>
@@ -31,20 +57,20 @@
 
       <div style="display: flex; gap: 8px;">
         <button class="btn-secondary" id="btn-demo-fastforward">⚡ Swarm Ready</button>
-        <button class="btn-secondary" id="btn-demo-reset" style="border-color: rgba(239, 68, 68, 0.4); color: #fca5a5;">🔄 Reset Demo</button>
+        <button class="btn-secondary" id="btn-demo-reset" style="border-color: rgba(239, 68, 68, 0.4); color: var(--color-danger);">🔄 Reset Demo</button>
       </div>
     </div>
   </header>
 
   <div class="container">
 
-    <!-- 1. Strategic Priority Dials -->
+    <!-- 1. Strategic Priority Dials (Kumo Design System) -->
     <section class="strategy-panel">
       <div class="strategy-header">
         <div class="strategy-title">
           <span>🎯</span>
           <span>Executive Strategic Dials</span>
-          <span style="font-size: 0.8rem; font-weight: normal; color: var(--text-muted); margin-left: 8px;">
+          <span style="font-size: 0.8rem; font-weight: normal; color: var(--text-subtle); margin-left: 8px;">
             (Dynamically shifts deployment queue priorities in real time)
           </span>
         </div>
@@ -172,11 +198,11 @@
 
           <form id="form-custom-intent" style="margin-top: 14px; display: flex; flex-direction: column; gap: 10px;">
             <input type="text" id="input-custom-title" placeholder="Feature Title (e.g. Add Apple Pay)" 
-                   style="background: #1f293d; border: 1px solid var(--border); padding: 8px 12px; border-radius: 6px; color: #fff; font-size: 0.85rem;" required>
+                   style="background: var(--bg-control); border: 1px solid var(--border-line); color: var(--text-strong); padding: 8px 12px; border-radius: 6px; font-size: 0.85rem;" required>
             <input type="text" id="input-custom-desc" placeholder="Technical Description" 
-                   style="background: #1f293d; border: 1px solid var(--border); padding: 8px 12px; border-radius: 6px; color: #fff; font-size: 0.85rem;">
+                   style="background: var(--bg-control); border: 1px solid var(--border-line); color: var(--text-strong); padding: 8px 12px; border-radius: 6px; font-size: 0.85rem;">
             <input type="number" id="input-custom-arr" placeholder="ARR on line ($)" 
-                   style="background: #1f293d; border: 1px solid var(--border); padding: 8px 12px; border-radius: 6px; color: #fff; font-size: 0.85rem;">
+                   style="background: var(--bg-control); border: 1px solid var(--border-line); color: var(--text-strong); padding: 8px 12px; border-radius: 6px; font-size: 0.85rem;">
             <button type="submit" class="btn-secondary" style="width: 100%; margin-top: 4px;">
               ⚡ Evaluate with Workers AI
             </button>

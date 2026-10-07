@@ -5,8 +5,54 @@ let cachedIntents = [];
 let updateTimeout = null;
 
 document.addEventListener("DOMContentLoaded", () => {
+  initTheme();
   initApp();
 });
+
+function initTheme() {
+  const saved = localStorage.getItem("dispatch-theme") || "system";
+  setTheme(saved, false);
+
+  // Setup theme button clicks
+  document.querySelectorAll(".theme-switch-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const theme = btn.dataset.theme;
+      setTheme(theme, true);
+    });
+  });
+
+  // Watch system color scheme changes
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
+    const current = localStorage.getItem("dispatch-theme") || "system";
+    if (current === "system") {
+      document.documentElement.style.colorScheme = "light dark";
+      document.documentElement.removeAttribute("data-mode");
+    }
+  });
+}
+
+function setTheme(theme, persist = true) {
+  if (persist) {
+    localStorage.setItem("dispatch-theme", theme);
+  }
+
+  // Update button active state
+  document.querySelectorAll(".theme-switch-btn").forEach((b) => {
+    b.classList.toggle("active", b.dataset.theme === theme);
+  });
+
+  if (theme === "light") {
+    document.documentElement.setAttribute("data-mode", "light");
+    document.documentElement.style.colorScheme = "light";
+  } else if (theme === "dark") {
+    document.documentElement.setAttribute("data-mode", "dark");
+    document.documentElement.style.colorScheme = "dark";
+  } else {
+    // System default
+    document.documentElement.removeAttribute("data-mode");
+    document.documentElement.style.colorScheme = "light dark";
+  }
+}
 
 async function initApp() {
   setupEventListeners();

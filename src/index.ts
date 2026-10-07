@@ -2,6 +2,8 @@ import { Env, StrategicWeights } from "./types";
 import { ArtifactsService } from "./artifacts";
 import { SwarmDispatcher } from "./dispatcher";
 import { StrategicEvaluator } from "./evaluator";
+import { ConflictReconciler } from "./reconciler";
+import { ReleaseRanker } from "./ranker";
 import seedData from "../seed.json";
 
 export default {
@@ -224,6 +226,52 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
       );
 
       return json({ success: true, evaluation: evalResult });
+    } catch (err: any) {
+      return json({ error: err.message }, 500);
+    }
+  }
+
+  // Detect Conflicts between Candidates
+  if (url.pathname === "/api/conflicts" && request.method === "GET") {
+    try {
+      const ranker = new ReleaseRanker(env);
+      const batch = await ranker.buildReleaseBatch(10);
+      return json({ conflicts: batch.conflictingPairs });
+    } catch (err: any) {
+      return json({ error: err.message }, 500);
+    }
+  }
+
+  // Run Semantic Conflict Reconciliation Agent
+  if (url.pathname === "/api/reconcile" && request.method === "POST") {
+    try {
+      const body = await request.json() as { intentA: string; intentB: string };
+      const reconciler = new ConflictReconciler(env);
+      const res = await reconciler.reconcileIntents(body.intentA, body.intentB);
+      return json(res);
+    } catch (err: any) {
+      return json({ error: err.message }, 500);
+    }
+  }
+
+  // Get Current Release Candidate Batch
+  if (url.pathname === "/api/batch" && request.method === "GET") {
+    try {
+      const ranker = new ReleaseRanker(env);
+      const batch = await ranker.buildReleaseBatch();
+      return json({ batch });
+    } catch (err: any) {
+      return json({ error: err.message }, 500);
+    }
+  }
+
+  // Deploy Strategic Release Batch
+  if (url.pathname === "/api/deploy-batch" && request.method === "POST") {
+    try {
+      const body = await request.json() as { intentIds: string[] };
+      const ranker = new ReleaseRanker(env);
+      const res = await ranker.deployReleaseBatch(body.intentIds || []);
+      return json({ success: true, deployment: res });
     } catch (err: any) {
       return json({ error: err.message }, 500);
     }

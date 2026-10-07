@@ -66,7 +66,7 @@ async function handleApi(request: Request, url: URL, env: Env): Promise<Response
   const rawKeyHeader = request.headers.get("x-dispatch-access-key") || url.searchParams.get("access") || "";
   const accessKey = rawKeyHeader.trim();
   const configuredKey = (env.DEMO_ACCESS_KEY || "").trim();
-  const isAuthorized = accessKey !== "" && (accessKey === "cf-dispatch-2026" || (configuredKey !== "" && accessKey === configuredKey));
+  const isAuthorized = configuredKey !== "" ? (accessKey !== "" && accessKey === configuredKey) : true;
 
   // Verify access key status
   if (url.pathname === "/api/auth/verify" && request.method === "GET") {
